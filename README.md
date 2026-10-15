@@ -11,7 +11,7 @@
   <a href="#2-getting-started">Getting Started</a> •
   <a href="#3-usage">Usage</a> •
   <a href="#5-screenshots">Screenshots</a> •
-  <a href="https://github.com/y4rvin/CreMore/issues">Report Bug</a> •
+  <a href="https://github.com/kigma00/CreMore/issues">Report Bug</a> •
   <a href="SECURITY.md">Report a Vulnerability</a>
 </p>
 
@@ -156,7 +156,7 @@ Azure Key Vault·Entra·Resource Manager 메타데이터를 수집하거나 Azur
 ### 1. 저장소 받기
 
 ```bash
-git clone https://github.com/y4rvin/CreMore.git
+git clone https://github.com/kigma00/CreMore.git
 cd CreMore
 ```
 
@@ -567,7 +567,7 @@ Apache 2.0 오픈소스로 자신의 인프라에서 운영하고 원문 없는 
 
 # [8] Contact
 
-* **버그·제안**: [GitHub Issues](https://github.com/y4rvin/CreMore/issues)
+* **버그·제안**: [GitHub Issues](https://github.com/kigma00/CreMore/issues)
 * **취약점 신고**: 공개 이슈로 열지 마세요. 저장소의 **Security → Report a vulnerability**(GitHub 비공개 취약점 신고)를 사용합니다. 절차와 범위는 [SECURITY.md](SECURITY.md)에 있습니다.
 * **기여**: [CONTRIBUTING.md](CONTRIBUTING.md)
 
@@ -662,4 +662,4 @@ CreMore는 오픈소스 보안 프로젝트입니다. 기여와 제안을 환영
 * 모바일 오류 목록의 가로 넘침과 화면 전환 완료 전에 판정하던 브라우저 테스트를 보완했습니다.
 * GCP 서비스 계정 도메인 판정과 URL 관련 테스트를 수정하고, Compose의 기본값 생략을 검사에 반영했습니다.
 * 의존성 감사에서 PyPI에 없는 로컬 애플리케이션만 제외하고 설치된 외부 의존성과 잠금 파일의 엄격한 검사는 유지합니다.
-* GitHub CI·CodeQL 상태는 [Actions](https://github.com/y4rvin/CreMore/actions)의 대상 commit별 실행 결과로 확인합니다. 로컬 검사와 원격 실행 결과는 구분합니다.
+* GitHub CI·CodeQL 상태는 [Actions](https://github.com/kigma00/CreMore/actions)의 대상 commit별 실행 결과로 확인합니다. 로컬 검사와 원격 실행 결과는 구분합니다.
