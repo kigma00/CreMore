@@ -1,0 +1,12 @@
+# The web image builds from the repository root (the context compose and CI give it); only web/ enters it.
+# This file overrides the root ignore file, which excludes web for Python builds.
+**
+!web/
+!web/**
+**/node_modules
+**/.omc
+**/.next
+**/.env
+**/.env.*
+**/*.log
+**/*.tsbuildinfo

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {
+      "id": "security_lake_gateway",
+      "provider": "http_json",
+      "format": "ocsf",
+      "options": {
+        "endpoint": "https://ocsf-gateway.internal.example/ingest",
+        "token_env": "OCSF_GATEWAY_TOKEN"
+      }
+    },
+    {
+      "id": "syslog_ocsf",
+      "provider": "syslog_tls",
+      "format": "ocsf",
+      "options": {"host": "collector.internal.example", "message_format": "json"}
+    }
+  ]
+}

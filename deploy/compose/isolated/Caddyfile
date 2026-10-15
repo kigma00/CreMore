@@ -1,0 +1,15 @@
+{
+	admin off
+	persist_config off
+	auto_https off
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://{$PUBLIC_HOST}:8443 {
+	tls /run/tls/fullchain.pem /run/tls/privkey.pem
+	encode zstd gzip
+	header -Server
+	reverse_proxy oauth2-proxy:4180
+}

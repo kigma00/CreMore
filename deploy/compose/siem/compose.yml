@@ -1,0 +1,46 @@
+# SIEM exporter (cremore-siem). Including this file runs it with the rest of the
+# stack and restarts it on its own, so events keep reaching the SOC unattended:
+#
+#   docker compose -f docker-compose.yml -f deploy/compose/siem/compose.yml up -d
+#
+# On a shared server add it to the public overlay's command
+# (deploy/compose/reverse-proxy/README.md). It reads only the SIEM outbox with its
+# own restricted role (docs/SIEM_INTEGRATION.md section 4) and never receives
+# source credentials, the fingerprint key or the admin token.
+services:
+  siem:
+    image: cremore-python
+    restart: unless-stopped
+    command: [cremore-siem, --config, /run/cremore/siem.json]
+    user: "${CREMORE_UID:-65532}:${CREMORE_GID:-65532}"
+    environment:
+      SIEM_DATABASE_URL: ${SIEM_DATABASE_URL:?set a restricted SIEM database connection}
+      SIEM_HEARTBEAT_FILE: /tmp/cremore-siem.heartbeat
+      SIEM_HTTP_TOKEN: ${SIEM_HTTP_TOKEN:-}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
+      LOGSCALE_INGEST_TOKEN: ${LOGSCALE_INGEST_TOKEN:-}
+      SENTINEL_CLIENT_SECRET: ${SENTINEL_CLIENT_SECRET:-}
+      ELASTIC_API_KEY: ${ELASTIC_API_KEY:-}
+      DD_API_KEY: ${DD_API_KEY:-}
+      OCSF_GATEWAY_TOKEN: ${OCSF_GATEWAY_TOKEN:-}
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+    volumes:
+      - type: bind
+        source: ${SIEM_CONFIG_PATH:?set an absolute path to the SIEM destination JSON}
+        target: /run/cremore/siem.json
+        read_only: true
+        bind: {create_host_path: false}
+      # CA and client certificates a syslog_tls destination names under /etc/cremore-siem.
+      - type: bind
+        source: ${SIEM_TLS_DIR:-./deploy/compose/siem/tls}
+        target: /etc/cremore-siem
+        read_only: true
+        bind: {create_host_path: false}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db: {condition: service_healthy}
+      api: {condition: service_started}

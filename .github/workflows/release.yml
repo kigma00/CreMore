@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # api and worker are the same Python image (entrypoint chosen by the
+          # deployment); publishing both names keeps the Helm rollback target.
+          - component: api
+            context: .
+            file: deploy/docker/python.Dockerfile
+          - component: worker
+            context: .
+            file: deploy/docker/python.Dockerfile
+          - component: web
+            context: .
+            file: web/Dockerfile
+          - component: oauth2-proxy
+            context: .
+            file: deploy/docker/oauth2-proxy.Dockerfile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Registry names must be lowercase; the repository name may not be.
+      - name: Image name
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}-${COMPONENT}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: metadata
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+      # Gate the exact registry digest before signing or publishing deployment
+      # assets, even when a tag was pushed without a preceding pull request.
+      - name: Audit release image digest before signing
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm \
+            -e TRIVY_USERNAME -e TRIVY_PASSWORD \
+            -v "$RUNNER_TEMP/trivy-release:/root/.cache" \
+            aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image \
+            --image-src remote --scanners vuln --severity HIGH,CRITICAL \
+            --exit-code 1 --no-progress "$IMAGE@$DIGEST"
+      - uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9 # v3
+      - name: Keyless-sign image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.component }}.spdx.json
+          artifact-name: sbom-${{ matrix.component }}.spdx.json
+      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Record signed release image
+        env:
+          COMPONENT: ${{ matrix.component }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p release-image
+          node -e 'const fs = require("node:fs"), e = process.env; fs.writeFileSync("release-image/" + e.COMPONENT + ".json", JSON.stringify({component:e.COMPONENT,image:e.IMAGE,digest:e.DIGEST,sha:e.SOURCE_SHA}));'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-image-${{ matrix.component }}
+          path: release-image/${{ matrix.component }}.json
+          if-no-files-found: error
+          overwrite: true
+
+  chart:
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download signed image references from this run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'release-image-*' --dir release-images
+      - name: Prepare deployment artifacts
+        run: node deploy/helm/release.cjs "$GITHUB_REPOSITORY" "$GITHUB_SHA" release-images deploy/helm dist
+      - name: Package chart
+        run: |
+          mkdir -p dist
+          version="${GITHUB_REF_NAME#v}"
+          docker run --rm -v "$PWD/dist/chart:/chart:ro" alpine/helm:3.17.2@sha256:b80eb190fca14707e94a5090235a3f1bf2f206f26761f2890d16a1e570386236 template release-check /chart > /dev/null
+          docker run --rm -v "$PWD/dist/chart:/chart:ro" -v "$PWD/dist:/dist" alpine/helm:3.17.2@sha256:b80eb190fca14707e94a5090235a3f1bf2f206f26761f2890d16a1e570386236 package /chart --version "$version" --app-version "$version" --destination /dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tgz dist/compose.release*.yml dist/release-images.json --verify-tag --generate-notes

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {
+      "id": "soc_http",
+      "provider": "http_json",
+      "options": {
+        "endpoint": "https://siem.internal.example/cremore/events",
+        "token_env": "SIEM_HTTP_TOKEN",
+        "authorization_scheme": "Bearer",
+        "timeout_seconds": 10.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,276 @@
+name: cremore
+
+# The platform runs on the Python (Apache-2.0) implementation under `cremore/`:
+# `api` and `worker` share one image and the Next.js `web/` dashboard talks to
+# the API over the same `/api/v1` contract. This is the single-operator install
+# for your own computer (AUTH_MODE=local, published on loopback only); deploy/helm
+# is the multi-user OIDC path.
+# It has no built-in credentials: set API_ADMIN_TOKEN and POSTGRES_PASSWORD in
+# an untracked `.env` file (see README). API_ADMIN_TOKEN need not be in that
+# file -- a value exported into the shell is preferred by Compose and reaches
+# all three services, so it can be generated fresh per start and never written
+# down. The dashboard attaches it for you; only a direct API call needs it.
+
+services:
+
+  db:
+    restart: unless-stopped
+    # 17.4-alpine carried a CRITICAL OpenSSL flaw (CVE-2026-31789) and 30 more
+    # HIGH ones in its Alpine packages. Pinned by digest so a rebuild cannot
+    # silently move; re-pin deliberately when a newer 17.x is reviewed.
+    image: postgres:17-alpine@sha256:f02121de6f74d30d8a94cd1d9584125e2178d7e6c377d8130112d4e52d867995
+    # This one keeps the image's own entrypoint, which starts as root and drops
+    # to postgres with its bundled gosu. Running it as postgres from the start
+    # would skip that binary, whose flagged CVEs are Go standard-library ones in
+    # networking and parsing code it never reaches -- and the binary stays in the
+    # image either way, so a scanner reports it regardless. What the root start
+    # does buy is ownership: it can chown a host directory mounted in place of
+    # the named volume, which a non-root start cannot, and it does not hardcode
+    # a uid that differs between the Alpine (70) and Debian (999) images.
+    # Each worker task runner holds about 10 connections (8 read-ahead threads, the
+    # runner and its lease heartbeat) and each API process up to 15; 200 leaves room
+    # for more runners and replicas than PostgreSQL's default 100 does.
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      POSTGRES_DB: cremore
+      POSTGRES_USER: cremore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cremore -d cremore"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    restart: unless-stopped
+    # One Python image serves both api and worker; the worker reuses this tag
+    # so a stale, separately built worker image can never be picked up.
+    image: cremore-python
+    build:
+      context: .
+      dockerfile: deploy/docker/python.Dockerfile
+    command: ["cremore-api"]
+    environment: &app-environment
+      AUTH_MODE: local
+      API_TOKEN: ${API_ADMIN_TOKEN:?set API_ADMIN_TOKEN in .env, or export a fresh one per start}
+      FINGERPRINT_KEY: ${FINGERPRINT_KEY:?set FINGERPRINT_KEY in .env}
+      # The audit trail's MAC key; empty derives it from FINGERPRINT_KEY. See .env.example.
+      AUDIT_CHAIN_KEY: ${AUDIT_CHAIN_KEY:-}
+      GCP_OAUTH_CLIENT_ID: ${GCP_OAUTH_CLIENT_ID:-}
+      GCP_OAUTH_CLIENT_SECRET: ${GCP_OAUTH_CLIENT_SECRET:-}
+      GCP_OAUTH_REDIRECT_URI: ${GCP_OAUTH_REDIRECT_URI:-}
+      # Installed ticket-system plugins an admin may choose (comma-separated ids, e.g. jira);
+      # empty offers none. The API and the worker both read it. See docs/TICKET_SYSTEMS.md.
+      TICKET_SYSTEM_PLUGINS: ${TICKET_SYSTEM_PLUGINS:-}
+      # Where the master that seals stored connection credentials comes from.
+      # All empty (the default) derives it from FINGERPRINT_KEY, which is how an
+      # install with none of these set behaves. SEALING_KEY separates the two, so
+      # the fingerprint key -- which must never rotate -- stops being the token
+      # master. SEALING_KMS_KEY_ID plus SEALING_KEY_CIPHERTEXT keep the master in
+      # AWS KMS instead, leaving only a ciphertext on this machine: opening it
+      # needs kms:Decrypt on that CMK, which your AWS login below already carries
+      # or does not. The *_PREVIOUS values open stored credentials but seal no
+      # new one, which is how either is rotated. See docs/CREDENTIAL_ROOTS.md.
+      SEALING_KEY: ${SEALING_KEY:-}
+      SEALING_KEY_PREVIOUS: ${SEALING_KEY_PREVIOUS:-}
+      SEALING_KMS_KEY_ID: ${SEALING_KMS_KEY_ID:-}
+      SEALING_KEY_CIPHERTEXT: ${SEALING_KEY_CIPHERTEXT:-}
+      SEALING_KEY_CIPHERTEXT_PREVIOUS: ${SEALING_KEY_CIPHERTEXT_PREVIOUS:-}
+      # Or keep the master in the Vault/OpenBao you already run, at a KV path.
+      # Both processes need it -- the API to seal a credential you type in, the
+      # worker to open one at scan time -- so each carries its own store token
+      # below, and the API's only has to read this one path.
+      SEALING_KEY_VAULT_PATH: ${SEALING_KEY_VAULT_PATH:-}
+      SEALING_KEY_VAULT_PATH_PREVIOUS: ${SEALING_KEY_VAULT_PATH_PREVIOUS:-}
+      SEALING_KEY_VAULT_FIELD: ${SEALING_KEY_VAULT_FIELD:-key}
+      # A typed phrase avoids an .env copy. Docker retains injected environment;
+      # existing-container restarts reuse it, recreation needs the same phrase.
+      SEALING_PASSPHRASE: ${SEALING_PASSPHRASE:-}
+      SEALING_PASSPHRASE_PREVIOUS: ${SEALING_PASSPHRASE_PREVIOUS:-}
+      SECRET_STORE_URL: ${SECRET_STORE_URL:-}
+      SECRET_STORE_MOUNT: ${SECRET_STORE_MOUNT:-secret}
+      # The API's token, scoped to the sealing path alone. The worker overrides
+      # this with SECRET_STORE_TOKEN, which also reads connection references.
+      SECRET_STORE_TOKEN: ${SEALING_VAULT_TOKEN:-}
+      API_BIND: 0.0.0.0:8080
+      DATABASE_URL: postgresql+psycopg://cremore:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/cremore
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      # The operator's own AWS login (~/.aws, e.g. IAM Identity Center) drives S3 scans; set
+      # AWS_PROFILE in .env to pick a profile, or leave it unset for the default.
+      HOME: /cremore-home
+      AWS_PROFILE:
+      AWS_SCANNER_PRINCIPAL_ARN: ${AWS_SCANNER_PRINCIPAL_ARN:-}
+      AWS_ONBOARDING_TEMPLATE_URL: ${AWS_ONBOARDING_TEMPLATE_URL:-}
+      # Optional second profile (e.g. another IAM Identity Center permission set) for approved key actions.
+      AWS_REMEDIATION_PROFILE: ${AWS_REMEDIATION_PROFILE:-}
+      # A PC has no instance metadata service; skip the SDK's slow lookup when not signed in.
+      AWS_EC2_METADATA_DISABLED: ${AWS_EC2_METADATA_DISABLED:-true}
+      # Provider verification is on and switched from the dashboard; `disabled`
+      # locks it off. Every credential-mutating action stays OFF by default.
+      CREDENTIAL_VERIFICATION_MODE: ${CREDENTIAL_VERIFICATION_MODE:-enabled}
+      # ALLOW the capability probe (default) or hard-lock it off. The actual
+      # probe is a dashboard switch that defaults OFF; when on, a verified
+      # discovered token makes a few read-only calls to record what it can reach
+      # (GitHub fine-grained PATs and Notion, which do not report scopes).
+      CREDENTIAL_CAPABILITY_PROBE_MODE: ${CREDENTIAL_CAPABILITY_PROBE_MODE:-enabled}
+      # ALLOW cross-host retry (default) or hard-lock it off. It is a dashboard
+      # switch that defaults OFF; when on, a GitHub token rejected by the host it
+      # was found on is retried on the other registered hosts (sends the token to
+      # an extra server).
+      CREDENTIAL_CROSS_HOST_VERIFICATION: ${CREDENTIAL_CROSS_HOST_VERIFICATION:-enabled}
+      # GitHub Enterprise Server hosts this install uses (comma separated bare
+      # hosts). github.com is always known; leave empty if you only use github.com.
+      GITHUB_ENTERPRISE_HOSTS: ${GITHUB_ENTERPRISE_HOSTS:-}
+      # DNS servers (IP addresses, comma separated) asked for the company domains' ownership records; empty asks
+      # the computer's own resolver, which also knows an intranet's zones (docs/DOMAIN_VERIFICATION.md).
+      DOMAIN_DNS_SERVERS: ${DOMAIN_DNS_SERVERS:-}
+      # How often one worker queues platform.heartbeat for the SIEM (1-60), and how
+      # many days a delivered SIEM event is kept (0 keeps finding and connection events).
+      OPERATIONS_HEARTBEAT_MINUTES: ${OPERATIONS_HEARTBEAT_MINUTES:-5}
+      SIEM_EVENT_RETENTION_DAYS: ${SIEM_EVENT_RETENTION_DAYS:-0}
+      # Days after departure a departed person's check data is deleted (30-3650).
+      LEAVER_RETENTION_DAYS: ${LEAVER_RETENTION_DAYS:-365}
+      ACTION_EXECUTION_ENABLED: "false"
+      ACTION_ROTATION_ENABLED: "false"
+      # The three optional read-only AWS investigations: privilege simulation,
+      # observed use (CloudTrail + IAM last used) in the key owner's connected
+      # account, and Secrets Manager metadata. Each ALLOWS its investigation
+      # (default) or hard-locks it off; the switch itself is in the dashboard and
+      # defaults OFF there, so an analyst can turn one on mid-investigation.
+      IAM_POTENTIAL_ACCESS_MODE: ${IAM_POTENTIAL_ACCESS_MODE:-enabled}
+      AWS_USAGE_LOOKUP_MODE: ${AWS_USAGE_LOOKUP_MODE:-enabled}
+      AWS_SECRETS_INVENTORY_MODE: ${AWS_SECRETS_INVENTORY_MODE:-enabled}
+      # Auto-register the organization's accounts (read-only ListAccounts from a
+      # delegated-admin account), which is also how AWS Control Tower estates are
+      # onboarded. The StackSet's shared ExternalId, the OU scope and the sweep
+      # switch are all set IN THE DASHBOARD, so nothing here has to change to use
+      # it. This ALLOWS it (default) or hard-locks it off.
+      AWS_ORG_DISCOVERY_MODE: ${AWS_ORG_DISCOVERY_MODE:-enabled}
+      AWS_ORG_DISCOVERY_INTERVAL_MINUTES: ${AWS_ORG_DISCOVERY_INTERVAL_MINUTES:-60}
+      # Optional pins: setting one fixes that field so the dashboard cannot
+      # change it. Leave them empty to let an administrator set them.
+      AWS_ORG_DISCOVERY_EXTERNAL_ID: ${AWS_ORG_DISCOVERY_EXTERNAL_ID:-}
+      AWS_ORG_DISCOVERY_OU_IDS: ${AWS_ORG_DISCOVERY_OU_IDS:-}
+      AWS_ORG_DISCOVERY_EXCLUDE_ACCOUNTS: ${AWS_ORG_DISCOVERY_EXCLUDE_ACCOUNTS:-}
+      # Reach accounts through this computer's IAM Identity Center assignments
+      # instead of a member role -- no CloudFormation anywhere. Which permission
+      # set, and whether the sweep runs, are chosen IN THE DASHBOARD, so nothing
+      # here has to change to use it. ALLOW that (default) or hard-lock it off,
+      # like the scan toggles above. It needs the interactive `aws sso login`
+      # token cached in ~/.aws (only token caches are mounted writable below).
+      # Servers should use member roles for unattended access; Helm disables SSO
+      # discovery by default and requires an explicit opt-in and writable cache.
+      AWS_SSO_DISCOVERY_MODE: ${AWS_SSO_DISCOVERY_MODE:-enabled}
+      # Optional: pin the permission set in configuration instead, which then
+      # cannot be changed from the dashboard.
+      AWS_SSO_DISCOVERY_PERMISSION_SET: ${AWS_SSO_DISCOVERY_PERMISSION_SET:-}
+      AWS_SSO_DISCOVERY_INTERVAL_MINUTES: ${AWS_SSO_DISCOVERY_INTERVAL_MINUTES:-60}
+      AWS_SSO_DISCOVERY_EXCLUDE_ACCOUNTS: ${AWS_SSO_DISCOVERY_EXCLUDE_ACCOUNTS:-}
+      # Auto-triage of learned false positives closes findings nobody reads, so
+      # the switch and the policy it applies are set in the dashboard, where they
+      # are visible and the change is recorded. This ALLOWS that (default) or
+      # hard-locks it off. LEARNED_FP_THRESHOLD / _MIN_SAMPLES / _MAX_CONFIDENCE
+      # remain optional pins for an installation that wants the policy fixed.
+      LEARNED_FP_MODE: ${LEARNED_FP_MODE:-enabled}
+      # Triggers use only already approved profiles and never provision source
+      # infrastructure. Each mode ALLOWS its trigger (default) or hard-locks it
+      # off; the switch and the profile it binds to are set in the dashboard
+      # (/settings/scan-triggers). Schedules (a daily full scan by default) and
+      # change feeds are on there unless an Admin switches them off; queues stay
+      # off until an Admin binds one. A mode set to disabled keeps it off.
+      SCAN_SCHEDULES_MODE: ${SCAN_SCHEDULES_MODE:-enabled}
+      SCAN_SQS_MODE: ${SCAN_SQS_MODE:-enabled}
+      SCAN_PUBSUB_MODE: ${SCAN_PUBSUB_MODE:-enabled}
+      SCAN_SERVICEBUS_MODE: ${SCAN_SERVICEBUS_MODE:-enabled}
+      SCAN_CHANGE_FEEDS_MODE: ${SCAN_CHANGE_FEEDS_MODE:-enabled}
+      # Optional pins. Set one and the dashboard shows that field as fixed.
+      SCAN_SQS_QUEUE_URL: "${SCAN_SQS_QUEUE_URL:-}"
+      SCAN_SQS_PROFILE_ID: "${SCAN_SQS_PROFILE_ID:-}"
+      SCAN_SQS_DEDICATED_ACKNOWLEDGED: "${SCAN_SQS_DEDICATED_ACKNOWLEDGED:-false}"
+      # Existing S3 Inventory reports. An Admin binds a bucket to its report in
+      # the dashboard; set this only to fix every binding in configuration.
+      SCAN_INVENTORY_MANIFESTS: "${SCAN_INVENTORY_MANIFESTS:-{}}"
+    # Linux/macOS: set CREMORE_UID/CREMORE_GID to `id -u`/`id -g` so the process
+    # can read your own ~/.aws files. Windows Docker Desktop needs neither.
+    user: "${CREMORE_UID:-65532}:${CREMORE_GID:-65532}"
+    # S3 scans reuse your AWS login when AWS_CONFIG_DIR=~/.aws is set in .env;
+    # otherwise an empty placeholder is mounted. Config/credentials stay
+    # read-only; only the IAM Identity Center (`aws sso login`) and `aws login`
+    # token caches are writable so sessions refresh, as the CLI does. Host paths
+    # are never auto-created (Linux Docker would create them owned by root).
+    volumes: &aws-login
+      - type: bind
+        source: ${AWS_CONFIG_DIR:-./deploy/compose/no-aws-login}
+        target: /cremore-home/.aws
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AWS_CONFIG_DIR:-./deploy/compose/no-aws-login}/sso/cache
+        target: /cremore-home/.aws/sso/cache
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${AWS_CONFIG_DIR:-./deploy/compose/no-aws-login}/login/cache
+        target: /cremore-home/.aws/login/cache
+        bind: { create_host_path: false }
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18080:8080"
+
+  worker:
+    restart: unless-stopped
+    image: cremore-python
+    command: ["cremore-worker"]
+    # A minimal init as PID 1 reaps a document-parser child orphaned when its
+    # parser server is killed, and passes SIGTERM on to the worker, which then
+    # stops its task runners.
+    init: true
+    # Room for the control loop's pass in progress, the runners' 5 s to end
+    # their task and the terminate step after it (Docker's default is 10 s).
+    stop_grace_period: 30s
+    environment:
+      <<: *app-environment
+      # OAuth client configuration is API-only; jobs use their sealed references.
+      GCP_OAUTH_CLIENT_ID: ""
+      GCP_OAUTH_CLIENT_SECRET: ""
+      GCP_OAUTH_REDIRECT_URI: ""
+      # Optional static Vault/OpenBao token. Tokens can instead be entered in the
+      # dashboard (stored encrypted); Helm supports Kubernetes workload auth.
+      # This is the wider one: it reads the connection references the worker
+      # resolves, and the sealing path too when one is configured.
+      SECRET_STORE_TOKEN: ${SECRET_STORE_TOKEN:-}
+      # Scans running at once in this worker, one per task-runner process (1-32);
+      # 0 picks min(4, the container's CPUs) on this PostgreSQL. Each runner holds
+      # its own database connections and up to about 0.9 GiB while it scans.
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-0}
+    user: "${CREMORE_UID:-65532}:${CREMORE_GID:-65532}"
+    volumes: *aws-login
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  web:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      CREMORE_API_URL: http://api:8080
+      CREMORE_AUTH_MODE: local
+      CREMORE_API_TOKEN: ${API_ADMIN_TOKEN:?set API_ADMIN_TOKEN in .env, or export a fresh one per start}
+      # The proxy attaches the admin token only for loopback Host headers
+      # (DNS-rebinding defense). Add hostnames here only if you knowingly
+      # publish the dashboard beyond this machine.
+      CREMORE_ALLOWED_HOSTS: ${CREMORE_ALLOWED_HOSTS:-}
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:3100:3000"
+
+volumes:
+  postgres-data:

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 1.0,
+  "batch_size": 100,
+  "max_attempts": 0,
+  "allow_plugins": ["slack_alerts"],
+  "destinations": [
+    {
+      "id": "security_team_slack",
+      "provider": "slack_alerts",
+      "format": "native",
+      "options": {
+        "webhook_url_env": "SLACK_ALERT_WEBHOOK_URL",
+        "dashboard_base_url": "https://cremore.example.com",
+        "timeout_seconds": 10
+      }
+    }
+  ]
+}

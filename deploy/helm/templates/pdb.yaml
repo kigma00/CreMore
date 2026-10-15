@@ -1,0 +1,15 @@
+{{- $root := . -}}
+{{- range $name := list "api" "worker" "web" }}
+{{- if gt (int (index $root.Values.replicas $name)) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cremore.fullname" $root }}-{{ $name }}
+  labels: {{ include "cremore.labels" (dict "root" $root "component" $name) | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" $root "component" $name) | nindent 6 }}
+{{- end }}
+{{- end }}

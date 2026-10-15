@@ -1,0 +1,93 @@
+# CreMore (Apache-2.0).
+#
+# The detection engine, decoders, false-positive logic and detector catalog are
+# written from public encoding specifications and provider documentation.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cremore"
+version = "0.1.0"
+description = "CreMore: credential exposure detection and governance (Python, Apache-2.0)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "CreMore contributors" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",          # ASGI server; the [standard] extras (websockets, reload, dotenv, YAML logging) are unused
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "httpx>=0.27",
+    "boto3>=1.43.93",         # tested IAM service-credential pagination and Control Tower baseline APIs
+    "google-re2>=1.1",        # linear-time regex (RE2) for untrusted content
+    "PyJWT[crypto]>=2.15.0",  # OIDC bearer verification (RS256/ES256 via JWKS)
+    "dnspython>=2.6.1",       # domain ownership TXT records, asked of the network's own resolver (cremore.domains)
+    "idna>=3.7",              # domain names encoded as browsers and httpx do (IDNA 2008, UTS 46; cremore.domains)
+    "pypdf>=6.19.0,<7",       # bounded in-memory document extraction in a child process
+    "olefile>=0.47,<0.48",    # Word 97-2003 and HWP 5 compound documents
+    "defusedxml>=0.7.1,<0.8", # office XML without external entities
+    "striprtf>=0.0.33,<0.1",  # RTF text; never executes embedded objects
+]
+
+[project.optional-dependencies]
+gcp = ["google-auth[requests]>=2.35"]
+azure = ["azure-identity>=1.24,<2"]  # exclude_broker_credential: no Windows sign-in as the worker
+dev = [
+    "pytest>=8.3",
+    "jsonschema>=4.23",       # Atlassian output/job schema contract checks
+    "rfc3339-validator>=0.1.4",  # Enforce date-time formats in those schemas
+    "ruff>=0.7",
+]
+
+[project.scripts]
+cremore-api = "cremore.cli.api:main"
+cremore-worker = "cremore.cli.worker:main"
+cremore-coverage = "cremore.cli.coverage:main"
+cremore-siem = "cremore.cli.siem:main"
+cremore-token-refresher = "cremore.cli.token_refresher:main"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "cremore",
+    "aws/backend", "gcp/backend", "github/backend", "gitlab/backend",
+    "notion/backend", "atlassian/backend", "azure/backend", "vault/backend",
+    "okta/backend", "keycloak/backend", "slack/backend", "website/backend",
+]
+python_files = ["*_test.py", "test_*.py"]
+pythonpath = [
+    "aws/backend", "gcp/backend", "github/backend", "gitlab/backend",
+    "notion/backend", "atlassian/backend", "azure/backend", "vault/backend",
+    "okta/backend", "keycloak/backend", "slack/backend", "website/backend",
+    "gcp/standalone",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint.flake8-bugbear]
+# This creates a stateless FastAPI dependency declaration at app registration.
+# Request authentication still runs through the returned dependency each time.
+extend-immutable-calls = ["fastapi.Depends"]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "cremore",
+    "aws/backend/cremore_aws_provider",
+    "gcp/backend/cremore_gcp_provider",
+    "gcp/standalone/cremore_gcp",
+    "github/backend/cremore_github_provider",
+    "gitlab/backend/cremore_gitlab_provider",
+    "notion/backend/cremore_notion_provider",
+    "atlassian/backend/cremore_atlassian_provider",
+    "azure/backend/cremore_azure_provider",
+    "vault/backend/cremore_vault_provider",
+    "okta/backend/cremore_okta_provider",
+    "keycloak/backend/cremore_keycloak_provider",
+    "slack/backend/cremore_slack_provider",
+    "website/backend/cremore_website_provider",
+]

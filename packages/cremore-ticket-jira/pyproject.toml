@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling==1.32.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cremore-ticket-jira"
+version = "0.1.0"
+description = "Jira (Cloud and Data Center) ticket-system adapter for CreMore owner approvals and exposure responses."
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = ["cremore==0.1.0"]
+
+[project.entry-points."cremore.ticket_systems"]
+jira = "cremore_ticket_jira:PROVIDER"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cremore_ticket_jira"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

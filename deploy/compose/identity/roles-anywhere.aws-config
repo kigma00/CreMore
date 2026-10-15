@@ -1,0 +1,2 @@
+[profile cremore-roles-anywhere]
+credential_process = /app/venv/bin/python -m cremore_aws_provider.roles_anywhere --config /run/cremore-roles-anywhere/roles-anywhere.json

@@ -1,0 +1,145 @@
+name: Security
+
+# PR updates run workflow lint and dependency audits. Run Security manually
+# before merging when full code and image analysis is needed; weekly audits
+# continue to catch newly published vulnerabilities on main.
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    if: github.event_name != 'pull_request'
+    # Analyze the full selected branch on manual runs and main on the schedule.
+    env:
+      CODEQL_ACTION_DIFF_INFORMED_QUERIES: "false"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # analyze reads its own workflow run; security-events uploads the results.
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: github/codeql-action/init@5ba2889ada762081db2c4f32a729827dce632c7b # v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+      - uses: github/codeql-action/autobuild@5ba2889ada762081db2c4f32a729827dce632c7b # v3
+      - uses: github/codeql-action/analyze@5ba2889ada762081db2c4f32a729827dce632c7b # v3
+        with:
+          output: codeql-results
+          # Code scanning uploads need the repository's code scanning feature
+          # (always on for public repositories). Where it is off, the results
+          # are still produced and gated below instead of being discarded.
+          upload: ${{ vars.CODE_SCANNING_ENABLED == 'true' && 'always' || 'never' }}
+          upload-database: false
+      - name: Fail on security findings
+        run: python3 .github/scripts/codeql_gate.py codeql-results
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: codeql-${{ matrix.language }}
+          path: codeql-results
+          if-no-files-found: ignore
+
+  # A workflow file GitHub rejects never runs, so it cannot report its own
+  # error; this job validates every workflow (expressions, contexts, matrix
+  # references, action inputs) from outside.
+  workflow-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: actionlint 1.7.12
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+  # Full manual and weekly runs audit OS and library vulnerabilities in the
+  # images; the lighter dependency audit below still runs on every PR update.
+  image-audit:
+    if: github.event_name != 'pull_request'
+    # pip-audit and npm audit read our manifests; neither sees the operating
+    # system inside an image we run. postgres:17.4-alpine sat here with a
+    # critical OpenSSL flaw and thirty more high ones that every check above
+    # passed over. The image is pinned by digest, which means it cannot move
+    # on its own -- and that it will not pick up fixes on its own either, so
+    # this is what makes the pin safe rather than stale.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Security can be run independently of CI, so both manual and weekly
+      # runs build the application images before auditing them.
+      - name: Build application images for the full audit
+        run: |
+          docker build -f deploy/docker/python.Dockerfile -t cremore-python:audit .
+          docker build -f web/Dockerfile -t cremore-web:audit .
+      - name: Third-party image, as docker-compose.yml pins it
+        run: |
+          image="$(grep -oE 'postgres:[^ ]+' docker-compose.yml | head -1)"
+          echo "scanning $image"
+          echo "IMAGE_DB=$image" >> "$GITHUB_ENV"
+      - name: Audit images for OS and library vulnerabilities
+        # --ignore-unfixed keeps the gate on what an upgrade can actually
+        # resolve. gosu is skipped deliberately: it is a static Go binary the
+        # postgres image ships, its findings are standard-library ones in
+        # networking and parsing code that a program which only setuids and
+        # execs never reaches, and no postgres release rebuilds it. Remove this
+        # skip if that changes; do not widen it to anything else.
+        run: |
+          set -euo pipefail
+          images=("$IMAGE_DB" cremore-python:audit cremore-web:audit)
+          for image in "${images[@]}"; do
+            echo "::group::$image"
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$HOME/.cache/trivy:/root/.cache" \
+              aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image \
+              --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --skip-files usr/local/bin/gosu --exit-code 1 --no-progress "$image"
+            echo "::endgroup::"
+          done
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.14"
+      - name: Audit Python dependencies (as installed from pyproject.toml)
+        run: |
+          python -m venv /tmp/audit
+          /tmp/audit/bin/pip install --upgrade pip
+          /tmp/audit/bin/pip install . "pip-audit==2.10.1"
+          /tmp/audit/bin/pip uninstall -y cremore
+          /tmp/audit/bin/pip-audit --strict --progress-spinner off
+      - name: Audit Python lock files (what the container image installs)
+        run: /tmp/audit/bin/pip-audit --strict --progress-spinner off --disable-pip --require-hashes -r requirements.txt -r requirements-build.txt
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.2
+      - name: Audit web dependencies (package-lock.json, including dev)
+        working-directory: web
+        run: npm audit --audit-level=high

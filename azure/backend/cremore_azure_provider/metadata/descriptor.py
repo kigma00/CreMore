@@ -1,0 +1,41 @@
+"""Provider-owned onboarding metadata; importing it performs no collection."""
+
+DESCRIPTOR = {
+    "provider": "azure_key_vault",
+    "label": "Azure Key Vault",
+    "purpose": ["vault_metadata"],
+    "editions": ["cloud"],
+    "origins": [],
+    "origin_hint": "https://your-vault.vault.azure.net",
+    "auth_types": ["workload_identity", "private_key_jwt"],
+    "auth_secret_roles": {"workload_identity": [], "private_key_jwt": ["client_id", "private_key", "tenant_id"]},
+    "scope_kinds": ["vault"],
+    "capabilities": ["vault_metadata", "vault_value", "public_keys"],
+    "modes": ["inventory"],
+    "options": ["sources", "page_size", "include_values", "max_targets"],
+    "defaults": {"options": {"sources": ["secrets"]}},
+    "source_options": [
+        {"value": "secrets", "label": "Current secrets", "label_ko": "현재 비밀"},
+        {"value": "versions", "label": "All listed versions", "label_ko": "조회된 전체 버전"},
+        {"value": "deleted_secrets", "label": "Deleted secret metadata", "label_ko": "삭제된 비밀 메타데이터"},
+        {"value": "keys", "label": "Key metadata", "label_ko": "키 메타데이터"},
+        {"value": "key_versions", "label": "Key versions", "label_ko": "키 버전"},
+        {"value": "deleted_keys", "label": "Deleted key metadata", "label_ko": "삭제된 키 메타데이터"},
+        {"value": "certificates", "label": "Certificate metadata", "label_ko": "인증서 메타데이터"},
+        {"value": "certificate_versions", "label": "Certificate versions", "label_ko": "인증서 버전"},
+        {"value": "deleted_certificates", "label": "Deleted certificate metadata", "label_ko": "삭제된 인증서 메타데이터"},
+        {"value": "public_certificates", "label": "Public certificate fingerprints", "label_ko": "공개 인증서 지문", "requires_capability": "public_keys"},
+    ],
+    "native_export": True, "compare": True, "recollect": False,
+    "limitations": [
+        # The one the native adapter got wrong, named first.
+        "UPDATED_ON_IS_A_PROPERTY_CHANGE_NOT_A_ROTATION",
+        "SECRET_ROTATION_POLICY_IS_NOT_PUBLISHED_BY_THE_DATA_PLANE",
+        "TAGS_ARE_AN_OPERATOR_DECLARATION_NOT_PROVIDER_STATE",
+        "VALUE_FINGERPRINTS_REQUIRE_EXPLICIT_OPT_IN_AND_SECRETS_GET_PERMISSION",
+        "SECRET_VALUES_ARE_NEVER_PERSISTED",
+        "PUBLIC_CERTIFICATE_EQUALITY_DOES_NOT_PROVE_PRIVATE_KEY_STORAGE_OR_AUTHORITY",
+        "ONE_CONNECTION_READS_ONE_VAULT",
+        "A_403_DOES_NOT_DISTINGUISH_RBAC_FROM_AN_ACCESS_POLICY",
+    ],
+}

@@ -1,0 +1,71 @@
+{{- if and .Values.isolation.enabled .Values.isolation.migrationJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cremore.fullname" . }}-migrate-{{ .Values.isolation.migrationJob.revision }}
+  labels: {{ include "cremore.labels" (dict "root" . "component" "migrator") | nindent 4 }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {{ include "cremore.selectorLabels" (dict "root" . "component" "migrator") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "cremore.serviceAccountName" (dict "root" . "component" "migrator") }}
+      automountServiceAccountToken: false
+      {{- with .Values.isolation.nodeSelectors.migrator }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: {{ .Values.image.api | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "cremore.db.startup"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ .Values.isolation.databaseSecrets.migrator }}, key: url } }
+            {{- if .Values.databaseTLS.caSecretName }}
+            - { name: PGSSLROOTCERT, value: /run/db-ca/ca.crt }
+            {{- end }}
+          volumeMounts:
+            - { name: runtime-tmp, mountPath: /tmp }
+            {{- if .Values.databaseTLS.caSecretName }}
+            - { name: database-ca, mountPath: /run/db-ca, readOnly: true }
+            {{- end }}
+      volumes:
+        - name: runtime-tmp
+          emptyDir: { medium: Memory, sizeLimit: 16Mi }
+        {{- if .Values.databaseTLS.caSecretName }}
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.databaseTLS.caSecretName }}
+            defaultMode: 0440
+            items: [{ key: {{ .Values.databaseTLS.caSecretKey }}, path: ca.crt }]
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cremore.fullname" . }}-migrator
+spec:
+  podSelector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "migrator") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  egress:
+    {{- include "cremore.dnsEgress" . | nindent 4 }}
+    - to: [{ ipBlock: { cidr: {{ .Values.networkPolicy.databaseCIDR | quote }} } }]
+      ports: [{ protocol: TCP, port: {{ .Values.networkPolicy.databasePort | int }} }]
+{{- end }}

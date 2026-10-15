@@ -1,0 +1,14 @@
+# Use with docker-compose.yml. Mount only the worker's existing ADC file.
+# GCP_ADC_FILE must be an absolute path on the Docker host.
+services:
+  worker:
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/gcp/adc.json
+      GOOGLE_CLOUD_QUOTA_PROJECT: ${GCP_QUOTA_PROJECT:-}
+    volumes:
+      - type: bind
+        source: ${GCP_ADC_FILE:?set GCP_ADC_FILE to an existing ADC file}
+        target: /run/gcp/adc.json
+        read_only: true
+        bind:
+          create_host_path: false

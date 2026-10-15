@@ -1,0 +1,466 @@
+[
+  {
+    "purpose": "S3 cost attribution, profiling overhead means NOT latency benchmark",
+    "variant": "baseline",
+    "objects_per_scan": 1000,
+    "object_bytes": 4096,
+    "full_scans": 6,
+    "all_objects_changed_on_rescan": true,
+    "timed_region": "ScanService.run only",
+    "loaded_source_sha256": "c76cc5e4b0b93fc0df63a00a22d819ec0b0ce9208235ba4e891178f82848375b",
+    "median_with_profiler": {
+      "initial": {
+        "wall_seconds": 2.696262300014496,
+        "list_calls": 1,
+        "listed_objects": 1000,
+        "get_calls": 1000,
+        "metadata_calls": 1,
+        "object_bytes_read": 4096000,
+        "engine_calls": 1000,
+        "engine_input_bytes": 4096000,
+        "objects_scanned": 1000,
+        "detections": 0,
+        "failed_objects": 0,
+        "coverage_accounted_objects": 1000,
+        "skipped_unchanged": 0,
+        "reused_cached_objects": 0
+      },
+      "rescan": {
+        "wall_seconds": 2.765674800000852,
+        "list_calls": 1,
+        "listed_objects": 1000,
+        "get_calls": 1000,
+        "metadata_calls": 1,
+        "object_bytes_read": 4096000,
+        "engine_calls": 1000,
+        "engine_input_bytes": 4096000,
+        "objects_scanned": 1000,
+        "detections": 0,
+        "failed_objects": 0,
+        "coverage_accounted_objects": 1000,
+        "skipped_unchanged": 0,
+        "reused_cached_objects": 0
+      }
+    },
+    "functions": [
+      {
+        "function": "cremore/scanning/service.py:33:run",
+        "calls": 6,
+        "self_seconds": 0.018982000000000002,
+        "cumulative_seconds": 16.2752609
+      },
+      {
+        "function": "cremore/scanning/orchestrator.py:124:scan_resource",
+        "calls": 6000,
+        "self_seconds": 0.0318581,
+        "cumulative_seconds": 16.1158735
+      },
+      {
+        "function": "cremore/detection/engine.py:148:scan",
+        "calls": 6000,
+        "self_seconds": 1.2362352,
+        "cumulative_seconds": 16.0581795
+      },
+      {
+        "function": "cremore/detection/engine.py:212:_redacted_lines",
+        "calls": 6000,
+        "self_seconds": 1.1050976000000001,
+        "cumulative_seconds": 7.6380743
+      },
+      {
+        "function": "cremore/detection/engine.py:215:<genexpr>",
+        "calls": 10884000,
+        "self_seconds": 5.1542255,
+        "cumulative_seconds": 5.1542255
+      },
+      {
+        "function": "cremore/detection/engine.py:166:<genexpr>",
+        "calls": 10884000,
+        "self_seconds": 5.1277773,
+        "cumulative_seconds": 5.1277773
+      },
+      {
+        "function": "cremore/detection/decoders.py:169:decoded_views",
+        "calls": 6000,
+        "self_seconds": 0.0273656,
+        "cumulative_seconds": 0.5970636
+      },
+      {
+        "function": "cremore/detection/decoders.py:60:decode_base64",
+        "calls": 6000,
+        "self_seconds": 0.49973350000000005,
+        "cumulative_seconds": 0.5131618
+      },
+      {
+        "function": "cremore/collectors/s3.py:80:collect",
+        "calls": 6006,
+        "self_seconds": 0.0039382,
+        "cumulative_seconds": 0.13732840000000002
+      },
+      {
+        "function": "cremore/collectors/s3.py:109:_list",
+        "calls": 6006,
+        "self_seconds": 0.023969,
+        "cumulative_seconds": 0.1332439
+      },
+      {
+        "function": "cremore/collectors/s3.py:142:_get",
+        "calls": 6000,
+        "self_seconds": 0.018752400000000002,
+        "cumulative_seconds": 0.0694386
+      },
+      {
+        "function": "cremore/detection/decoders.py:95:decode_utf16",
+        "calls": 6000,
+        "self_seconds": 0.0165355,
+        "cumulative_seconds": 0.030903200000000002
+      },
+      {
+        "function": "cremore/collectors/s3.py:94:_object",
+        "calls": 6000,
+        "self_seconds": 0.0215277,
+        "cumulative_seconds": 0.0267241
+      },
+      {
+        "function": "cremore/detection/decoders.py:126:decode_unicode_escape",
+        "calls": 6000,
+        "self_seconds": 0.0029196,
+        "cumulative_seconds": 0.0128708
+      },
+      {
+        "function": "cremore/detection/decoders.py:146:decode_html_entities",
+        "calls": 6000,
+        "self_seconds": 0.0019342,
+        "cumulative_seconds": 0.010622000000000001
+      },
+      {
+        "function": "cremore/collectors/s3.py:91:_excluded",
+        "calls": 6000,
+        "self_seconds": 0.004722700000000001,
+        "cumulative_seconds": 0.0086352
+      },
+      {
+        "function": "cremore/collectors/s3.py:59:_request",
+        "calls": 6012,
+        "self_seconds": 0.00349,
+        "cumulative_seconds": 0.006900600000000001
+      },
+      {
+        "function": "cremore/collectors/base.py:56:consume",
+        "calls": 6012,
+        "self_seconds": 0.0034106,
+        "cumulative_seconds": 0.0034106
+      },
+      {
+        "function": "cremore/collectors/s3.py:92:<genexpr>",
+        "calls": 6000,
+        "self_seconds": 0.0009845000000000001,
+        "cumulative_seconds": 0.0009845000000000001
+      },
+      {
+        "function": "cremore/collectors/s3.py:63:_exposure",
+        "calls": 6,
+        "self_seconds": 0.0000603,
+        "cumulative_seconds": 0.0001463
+      },
+      {
+        "function": "cremore/collectors/s3.py:74:<genexpr>",
+        "calls": 30,
+        "self_seconds": 0.0000129,
+        "cumulative_seconds": 0.000017500000000000002
+      }
+    ]
+  },
+  {
+    "purpose": "S3 cost attribution, profiling overhead means NOT latency benchmark",
+    "variant": "worktree",
+    "objects_per_scan": 1000,
+    "object_bytes": 4096,
+    "full_scans": 6,
+    "all_objects_changed_on_rescan": true,
+    "timed_region": "ScanService.run only",
+    "loaded_source_sha256": "663ffa0af1862de75c21485a995ab4a7fac95a2cce8d22a53164ee9f65d3419b",
+    "median_with_profiler": {
+      "initial": {
+        "wall_seconds": 2.7769564999907743,
+        "list_calls": 1,
+        "listed_objects": 1000,
+        "get_calls": 1000,
+        "metadata_calls": 1,
+        "object_bytes_read": 4096000,
+        "engine_calls": 1000,
+        "engine_input_bytes": 4096000,
+        "objects_scanned": 1000,
+        "detections": 0,
+        "failed_objects": 0,
+        "coverage_accounted_objects": 1000,
+        "skipped_unchanged": 0,
+        "reused_cached_objects": 0
+      },
+      "rescan": {
+        "wall_seconds": 2.7706927999970503,
+        "list_calls": 1,
+        "listed_objects": 1000,
+        "get_calls": 1000,
+        "metadata_calls": 1,
+        "object_bytes_read": 4096000,
+        "engine_calls": 1000,
+        "engine_input_bytes": 4096000,
+        "objects_scanned": 1000,
+        "detections": 0,
+        "failed_objects": 0,
+        "coverage_accounted_objects": 1000,
+        "skipped_unchanged": 0,
+        "reused_cached_objects": 0
+      }
+    },
+    "functions": [
+      {
+        "function": "cremore/scanning/service.py:48:run",
+        "calls": 6,
+        "self_seconds": 0.15293620000000002,
+        "cumulative_seconds": 16.7026146
+      },
+      {
+        "function": "cremore/detection/engine.py:177:scan",
+        "calls": 6000,
+        "self_seconds": 1.2061350000000002,
+        "cumulative_seconds": 15.628152700000001
+      },
+      {
+        "function": "cremore/detection/engine.py:241:_redacted_lines",
+        "calls": 6000,
+        "self_seconds": 1.0753300000000001,
+        "cumulative_seconds": 7.4364476
+      },
+      {
+        "function": "cremore/detection/engine.py:244:<genexpr>",
+        "calls": 10884000,
+        "self_seconds": 5.0109692,
+        "cumulative_seconds": 5.0109692
+      },
+      {
+        "function": "cremore/detection/engine.py:195:<genexpr>",
+        "calls": 10884000,
+        "self_seconds": 4.9647369,
+        "cumulative_seconds": 4.9647369
+      },
+      {
+        "function": "cremore/detection/decoders.py:169:decoded_views",
+        "calls": 6000,
+        "self_seconds": 0.0288372,
+        "cumulative_seconds": 0.5777463
+      },
+      {
+        "function": "cremore/detection/decoders.py:60:decode_base64",
+        "calls": 6000,
+        "self_seconds": 0.48284940000000004,
+        "cumulative_seconds": 0.4942169
+      },
+      {
+        "function": "cremore/collectors/s3.py:112:collect",
+        "calls": 6006,
+        "self_seconds": 0.0036290000000000003,
+        "cumulative_seconds": 0.2523599
+      },
+      {
+        "function": "cremore/collectors/s3.py:159:_list",
+        "calls": 6006,
+        "self_seconds": 0.027240700000000003,
+        "cumulative_seconds": 0.248619
+      },
+      {
+        "function": "cremore/collectors/s3.py:260:_revision",
+        "calls": 12000,
+        "self_seconds": 0.030970300000000003,
+        "cumulative_seconds": 0.1964698
+      },
+      {
+        "function": "cremore/collectors/base.py:28:read",
+        "calls": 6000,
+        "self_seconds": 0.0052818000000000006,
+        "cumulative_seconds": 0.19438350000000001
+      },
+      {
+        "function": "cremore/collectors/s3.py:143:_object",
+        "calls": 6000,
+        "self_seconds": 0.039884300000000004,
+        "cumulative_seconds": 0.1919168
+      },
+      {
+        "function": "cremore/collectors/s3.py:157:<lambda>",
+        "calls": 6000,
+        "self_seconds": 0.0074429000000000006,
+        "cumulative_seconds": 0.1891017
+      },
+      {
+        "function": "cremore/collectors/s3.py:202:_get",
+        "calls": 6000,
+        "self_seconds": 0.0409256,
+        "cumulative_seconds": 0.1816588
+      },
+      {
+        "function": "__init__.py:183:dumps",
+        "calls": 24000,
+        "self_seconds": 0.0464496,
+        "cumulative_seconds": 0.1782705
+      },
+      {
+        "function": "cremore/db/scan_store.py:44:stable_digest",
+        "calls": 12000,
+        "self_seconds": 0.020040600000000002,
+        "cumulative_seconds": 0.14534560000000002
+      },
+      {
+        "function": "cremore/db/scan_store.py:140:cached",
+        "calls": 6000,
+        "self_seconds": 0.022526300000000003,
+        "cumulative_seconds": 0.1319757
+      },
+      {
+        "function": "encoder.py:183:encode",
+        "calls": 24000,
+        "self_seconds": 0.032770600000000004,
+        "cumulative_seconds": 0.12116510000000001
+      },
+      {
+        "function": "cremore/scanning/orchestrator.py:87:using",
+        "calls": 6000,
+        "self_seconds": 0.0075485000000000005,
+        "cumulative_seconds": 0.09554800000000001
+      },
+      {
+        "function": "cremore/collectors/s3.py:255:_iso",
+        "calls": 24000,
+        "self_seconds": 0.0134076,
+        "cumulative_seconds": 0.09143770000000001
+      },
+      {
+        "function": "copy.py:61:copy",
+        "calls": 6000,
+        "self_seconds": 0.030572000000000002,
+        "cumulative_seconds": 0.08799950000000001
+      },
+      {
+        "function": "encoder.py:205:iterencode",
+        "calls": 24000,
+        "self_seconds": 0.0752332,
+        "cumulative_seconds": 0.0752332
+      },
+      {
+        "function": "cremore/scanning/orchestrator.py:149:scan_resource",
+        "calls": 6000,
+        "self_seconds": 0.027550400000000003,
+        "cumulative_seconds": 0.0450324
+      },
+      {
+        "function": "cremore/collectors/s3.py:247:_timestamp",
+        "calls": 30000,
+        "self_seconds": 0.0202518,
+        "cumulative_seconds": 0.034058700000000004
+      },
+      {
+        "function": "cremore/scanning/orchestrator.py:250:reconcile_resource",
+        "calls": 6000,
+        "self_seconds": 0.0203488,
+        "cumulative_seconds": 0.030076000000000002
+      },
+      {
+        "function": "cremore/detection/decoders.py:95:decode_utf16",
+        "calls": 6000,
+        "self_seconds": 0.0177145,
+        "cumulative_seconds": 0.0288132
+      },
+      {
+        "function": "cremore/detection/engine.py:47:__init__",
+        "calls": 6000,
+        "self_seconds": 0.0212146,
+        "cumulative_seconds": 0.0212146
+      },
+      {
+        "function": "cremore/detection/decoders.py:126:decode_unicode_escape",
+        "calls": 6000,
+        "self_seconds": 0.0031189000000000004,
+        "cumulative_seconds": 0.0129583
+      },
+      {
+        "function": "cremore/db/scan_store.py:65:_transaction",
+        "calls": 12000,
+        "self_seconds": 0.0091301,
+        "cumulative_seconds": 0.011052900000000001
+      },
+      {
+        "function": "cremore/detection/decoders.py:146:decode_html_entities",
+        "calls": 6000,
+        "self_seconds": 0.0020205,
+        "cumulative_seconds": 0.0108524
+      },
+      {
+        "function": "cremore/collectors/s3.py:136:_excluded",
+        "calls": 6000,
+        "self_seconds": 0.0053172,
+        "cumulative_seconds": 0.009944000000000001
+      },
+      {
+        "function": "cremore/db/scan_store.py:53:__init__",
+        "calls": 6006,
+        "self_seconds": 0.004863200000000001,
+        "cumulative_seconds": 0.007989300000000001
+      },
+      {
+        "function": "cremore/collectors/s3.py:85:_request",
+        "calls": 6012,
+        "self_seconds": 0.0042099,
+        "cumulative_seconds": 0.007979
+      },
+      {
+        "function": "cremore/db/repository.py:284:exposures_for_resource",
+        "calls": 6000,
+        "self_seconds": 0.0037073,
+        "cumulative_seconds": 0.0050841
+      },
+      {
+        "function": "cremore/collectors/base.py:68:consume",
+        "calls": 6012,
+        "self_seconds": 0.0037691,
+        "cumulative_seconds": 0.0037691
+      },
+      {
+        "function": "cremore/db/scan_store.py:151:cache",
+        "calls": 6000,
+        "self_seconds": 0.0017382,
+        "cumulative_seconds": 0.0017382
+      },
+      {
+        "function": "cremore/collectors/s3.py:137:<genexpr>",
+        "calls": 6000,
+        "self_seconds": 0.0009893,
+        "cumulative_seconds": 0.0009893
+      },
+      {
+        "function": "cremore/collectors/s3.py:139:skipped_objects",
+        "calls": 6000,
+        "self_seconds": 0.0008442,
+        "cumulative_seconds": 0.0008442
+      },
+      {
+        "function": "cremore/collectors/s3.py:95:_exposure",
+        "calls": 6,
+        "self_seconds": 0.0000427,
+        "cumulative_seconds": 0.00011190000000000001
+      },
+      {
+        "function": "cremore/collectors/s3.py:106:<genexpr>",
+        "calls": 30,
+        "self_seconds": 0.000010500000000000001,
+        "cumulative_seconds": 0.000014700000000000002
+      },
+      {
+        "function": "cremore/scanning/service.py:32:<lambda>",
+        "calls": 6,
+        "self_seconds": 0.0000097,
+        "cumulative_seconds": 0.0000097
+      }
+    ]
+  }
+]

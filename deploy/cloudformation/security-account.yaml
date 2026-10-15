@@ -1,0 +1,281 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Central execution identities for a self-hosted CreMore deployment.
+Parameters:
+  PlatformPrincipalArn:
+    Type: String
+    AllowedPattern: '^arn:aws(-[a-z]+)*:iam::[0-9]{12}:(role|user)/[A-Za-z0-9+=,.@_/-]{1,512}$'
+    Description: Exact IAM role or user ARN used by the platform; account roots, wildcards and STS session ARNs are not accepted.
+  ScannerExecutionRoleName:
+    Type: String
+    Default: PlatformScannerExecutionRole
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+  RemediationExecutionRoleName:
+    Type: String
+    Default: PlatformRemediationExecutionRole
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+  MemberScannerRoleName:
+    Type: String
+    Default: CredentialExposureScannerRole
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+  MemberRemediationRoleName:
+    Type: String
+    Default: CredentialExposureRemediationRole
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+  MemberAccountIds:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: Optional allowlist. Leave empty for UI-driven onboarding protected by the member trust policy and unique External ID.
+  EnableRemediation:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  EnableOrgDiscovery:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: >-
+      Grant the scanner execution role read-only AWS Organizations account
+      discovery (ListAccounts/DescribeAccount). This account must be registered
+      as a delegated administrator for AWS Organizations from the management
+      account. Leave false for hand-registered accounts.
+  EnableControlTowerContext:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: Optional read-only baseline context in the Control Tower home region. The runtime identity must have access to the management account's Control Tower resources.
+  ControlTowerLifecycleQueueArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws[a-z-]*:sqs:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$'
+    Description: Optional exact dedicated Control Tower lifecycle queue ARN. Configure its URL and acknowledge ownership in the dashboard separately.
+  CloudTrailLakeEventDataStoreArn:
+    Type: String
+    Default: ''
+    Description: Optional exact central event data store ARN used for observed management and data-event queries.
+Conditions:
+  RemediationEnabled: !Equals [!Ref EnableRemediation, 'true']
+  OrgDiscoveryEnabled: !Equals [!Ref EnableOrgDiscovery, 'true']
+  ControlTowerContextEnabled: !Equals [!Ref EnableControlTowerContext, 'true']
+  HasControlTowerLifecycleQueue: !Not [!Equals [!Ref ControlTowerLifecycleQueueArn, '']]
+  HasMemberAccountRestriction: !Not [!Equals [!Join ['', !Ref MemberAccountIds], '']]
+  HasCloudTrailLake: !Not [!Equals [!Ref CloudTrailLakeEventDataStoreArn, '']]
+Resources:
+  ScannerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref ScannerExecutionRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref PlatformPrincipalArn }
+            Action: sts:AssumeRole
+            Condition:
+              ArnEquals:
+                aws:PrincipalArn: !Ref PlatformPrincipalArn
+      Policies:
+        - PolicyName: ScannerMutationDeny
+          PolicyDocument: {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "DenyScannerSourceMutation",
+                  "Effect": "Deny",
+                  "Action": [
+                    "s3:Put*",
+                    "s3:Delete*",
+                    "s3:Create*",
+                    "s3:Update*",
+                    "s3:Replicate*",
+                    "s3:RestoreObject",
+                    "s3:AbortMultipartUpload",
+                    "s3:BypassGovernanceRetention",
+                    "s3:InitiateReplication",
+                    "s3:PauseReplication",
+                    "s3:Write*",
+                    "iam:Add*",
+                    "iam:Attach*",
+                    "iam:Change*",
+                    "iam:Create*",
+                    "iam:Deactivate*",
+                    "iam:Delete*",
+                    "iam:Detach*",
+                    "iam:Enable*",
+                    "iam:PassRole",
+                    "iam:Put*",
+                    "iam:Remove*",
+                    "iam:Reset*",
+                    "iam:Resync*",
+                    "iam:Set*",
+                    "iam:Tag*",
+                    "iam:Untag*",
+                    "iam:Update*",
+                    "iam:Upload*",
+                    "secretsmanager:Create*",
+                    "secretsmanager:Delete*",
+                    "secretsmanager:Put*",
+                    "secretsmanager:Update*",
+                    "secretsmanager:Rotate*",
+                    "secretsmanager:Restore*",
+                    "secretsmanager:Replicate*",
+                    "secretsmanager:Remove*",
+                    "secretsmanager:Stop*",
+                    "secretsmanager:CancelRotateSecret",
+                    "secretsmanager:Tag*",
+                    "secretsmanager:Untag*",
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:BatchGetSecretValue",
+                    "cloudtrail:Create*",
+                    "cloudtrail:Update*",
+                    "cloudtrail:Delete*",
+                    "cloudtrail:Put*",
+                    "cloudtrail:StartLogging",
+                    "cloudtrail:StopLogging",
+                    "cloudtrail:AddTags",
+                    "cloudtrail:RemoveTags",
+                    "cloudtrail:RestoreEventDataStore",
+                    "cloudtrail:EnableFederation",
+                    "cloudtrail:DisableFederation",
+                    "cloudtrail:StartEventDataStoreIngestion",
+                    "cloudtrail:StopEventDataStoreIngestion",
+                    "cloudtrail:StartImport",
+                    "cloudtrail:StopImport",
+                    "cloudtrail:RegisterOrganizationDelegatedAdmin",
+                    "cloudtrail:DeregisterOrganizationDelegatedAdmin",
+                    "events:Put*",
+                    "events:Create*",
+                    "events:Update*",
+                    "events:Delete*",
+                    "events:Remove*",
+                    "events:EnableRule",
+                    "events:DisableRule",
+                    "sqs:CreateQueue",
+                    "sqs:DeleteQueue",
+                    "sqs:PurgeQueue",
+                    "sqs:SetQueueAttributes",
+                    "sqs:AddPermission",
+                    "sqs:RemovePermission",
+                    "kms:Create*",
+                    "kms:Delete*",
+                    "kms:Disable*",
+                    "kms:Enable*",
+                    "kms:Put*",
+                    "kms:Update*",
+                    "kms:Schedule*",
+                    "kms:CancelKeyDeletion",
+                    "kms:Tag*",
+                    "kms:Untag*",
+                    "kms:RevokeGrant",
+                    "kms:RetireGrant",
+                    "kms:ImportKeyMaterial",
+                    "kms:ReplicateKey"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+        - PolicyName: ReadOwnRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: iam:GetRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ScannerExecutionRoleName}
+        - PolicyName: AssumeMemberScannerRoles
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Sub
+                  - arn:${AWS::Partition}:iam::*:role/${MemberScannerRoleName}
+                  - {}
+                Condition: !If
+                  - HasMemberAccountRestriction
+                  - StringEquals:
+                      aws:ResourceAccount: !Ref MemberAccountIds
+                  - !Ref AWS::NoValue
+        - !If
+          - HasCloudTrailLake
+          - PolicyName: QueryConfiguredCloudTrailLake
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: cloudtrail:StartQuery
+                  Resource: !Ref CloudTrailLakeEventDataStoreArn
+                - Effect: Allow
+                  Action: cloudtrail:GetQueryResults
+                  Resource: '*'
+          - !Ref AWS::NoValue
+        - !If
+          - OrgDiscoveryEnabled
+          # Read-only account discovery. Requires this account to be a delegated
+          # administrator for AWS Organizations (set from the management account).
+          - PolicyName: OrganizationsAccountDiscovery
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - organizations:ListAccounts
+                    - organizations:DescribeAccount
+                    # OU-scoped discovery walks the tree with these two.
+                    - organizations:ListAccountsForParent
+                    - organizations:ListOrganizationalUnitsForParent
+                    - organizations:ListRoots
+                    - organizations:DescribeOrganization
+                  Resource: '*'
+          - !Ref AWS::NoValue
+        - !If
+          - ControlTowerContextEnabled
+          - PolicyName: ControlTowerInventoryContext
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: [controltower:ListBaselines, controltower:ListEnabledBaselines, controltower:GetEnabledBaseline]
+                  Resource: '*'
+          - !Ref AWS::NoValue
+        - !If
+          - HasControlTowerLifecycleQueue
+          - PolicyName: ConsumeControlTowerLifecycleEvents
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                  Resource: !Ref ControlTowerLifecycleQueueArn
+          - !Ref AWS::NoValue
+  RemediationExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: RemediationEnabled
+    Properties:
+      RoleName: !Ref RemediationExecutionRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref PlatformPrincipalArn }
+            Action: sts:AssumeRole
+            Condition:
+              ArnEquals:
+                aws:PrincipalArn: !Ref PlatformPrincipalArn
+      Policies:
+        - PolicyName: AssumeMemberRemediationRoles
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Sub arn:${AWS::Partition}:iam::*:role/${MemberRemediationRoleName}
+                Condition: !If
+                  - HasMemberAccountRestriction
+                  - StringEquals:
+                      aws:ResourceAccount: !Ref MemberAccountIds
+                  - !Ref AWS::NoValue
+Outputs:
+  ScannerExecutionRoleArn: { Value: !GetAtt ScannerExecutionRole.Arn }
+  RemediationExecutionRoleArn:
+    Condition: RemediationEnabled
+    Value: !GetAtt RemediationExecutionRole.Arn

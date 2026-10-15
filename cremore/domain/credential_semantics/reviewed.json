@@ -1,0 +1,76 @@
+{
+  "revision": "2026-09-09.p1.3",
+  "facts_ttl_seconds": 86400,
+  "types": [
+    {
+      "type_id": "aws.iam.access_key", "provider": "aws", "kind": "ACCESS_KEY", "expiration_model": "NONE_BY_DEFAULT", "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html", "reviewed_at": "2026-09-08", "scope": "IAM_LONG_TERM_ACCESS_KEYS"}],
+      "effects": [{"action": "DISABLE", "effect": "KEY_AUTHENTICATION_DISABLED", "derived_token_effect": "NOT_ESTABLISHED", "reversible": true, "conditions": ["EXACT_KEY_AND_ACCOUNT_REQUIRED", "DERIVED_SESSIONS_REQUIRE_SEPARATE_REVIEW"]}, {"action": "DELETE", "effect": "KEY_DELETED", "derived_token_effect": "NOT_ESTABLISHED", "reversible": false, "conditions": ["EXACT_KEY_AND_ACCOUNT_REQUIRED", "DERIVED_SESSIONS_REQUIRE_SEPARATE_REVIEW"]}],
+      "limitations": ["NO_DEFAULT_EXPIRY_IS_NOT_PERMANENT_VALIDITY", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "aws.sts.session", "provider": "aws", "kind": "SESSION", "expiration_model": "PROVIDER_DEFINED", "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp.html", "reviewed_at": "2026-09-08", "scope": "STS_TEMPORARY_CREDENTIALS_ISSUANCE_DEPENDENT_LIFETIME"}],
+      "effects": [], "limitations": ["ISSUANCE_PATH_AND_SESSION_POLICY_REQUIRED", "PARENT_KEY_CHANGE_IS_NOT_SESSION_REVOCATION", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "github.pat.classic", "provider": "github", "kind": "PERSONAL_ACCESS_TOKEN", "expiration_model": "PROVIDER_DEFINED", "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens", "reviewed_at": "2026-09-08", "scope": "CLASSIC_PAT_EXPIRATION_AND_DELETION"}],
+      "effects": [{"action": "DELETE", "effect": "TOKEN_DELETED", "derived_token_effect": "NOT_ESTABLISHED", "reversible": false, "conditions": ["EXACT_TOKEN_REQUIRED", "ORGANIZATION_ACCESS_IS_NOT_TOKEN_OWNERSHIP"]}],
+      "limitations": ["TOKEN_EXPIRATION_AND_ORGANIZATION_POLICY_REQUIRED", "ORGANIZATION_CONTEXT_DOES_NOT_IDENTIFY_TOKEN", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "github.pat.fine_grained", "provider": "github", "kind": "PERSONAL_ACCESS_TOKEN", "expiration_model": "PROVIDER_DEFINED", "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens", "reviewed_at": "2026-09-08", "scope": "FINE_GRAINED_PAT_EXPIRATION_RESOURCE_OWNER_AND_APPROVAL"}],
+      "effects": [{"action": "DELETE", "effect": "TOKEN_DELETED", "derived_token_effect": "NOT_ESTABLISHED", "reversible": false, "conditions": ["EXACT_TOKEN_REQUIRED", "ORGANIZATION_ACCESS_IS_NOT_TOKEN_OWNERSHIP"]}],
+      "limitations": ["TOKEN_EXPIRATION_AND_ORGANIZATION_POLICY_REQUIRED", "ORGANIZATION_CONTEXT_DOES_NOT_IDENTIFY_TOKEN", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "github.app.private_key", "provider": "github", "kind": "PRIVATE_KEY", "expiration_model": "NONE_BY_DEFAULT", "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps", "reviewed_at": "2026-09-08", "scope": "GITHUB_APP_PRIVATE_KEY_EXPIRY_DELETION_AND_ROTATION"}],
+      "effects": [{"action": "DELETE", "effect": "APP_PRIVATE_KEY_DELETED", "derived_token_effect": "NOT_ESTABLISHED", "reversible": false, "conditions": ["EXACT_APP_AND_KEY_REQUIRED", "INSTALLATION_TOKENS_REQUIRE_SEPARATE_REVIEW"]}],
+      "limitations": ["NO_DEFAULT_EXPIRY_IS_NOT_PERMANENT_VALIDITY", "APP_KEY_IS_NOT_INSTALLATION_TOKEN", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "github.app.installation_token", "provider": "github", "kind": "ACCESS_TOKEN", "expiration_model": "FIXED_DEFAULT", "default_ttl_seconds": 3600, "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app", "reviewed_at": "2026-09-08", "scope": "INSTALLATION_TOKEN_RESPONSE_EXPIRATION_PERMISSIONS_AND_REPOSITORIES"}],
+      "effects": [], "limitations": ["DEFAULT_TTL_IS_NOT_ACTUAL_EXPIRY", "APP_KEY_IS_NOT_INSTALLATION_TOKEN", "ORGANIZATION_CONTEXT_DOES_NOT_IDENTIFY_TOKEN", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "notion.integration.token", "provider": "notion", "kind": "ACCESS_TOKEN", "expiration_model": "UNKNOWN", "review_due_at": "2026-12-08",
+      "sources": [{"url": "https://developers.notion.com/reference/get-self", "reviewed_at": "2026-09-09", "scope": "SELF_BOT_AND_WORKSPACE_CONTEXT_NOT_HUMAN_TOKEN_OWNERSHIP"}],
+      "effects": [], "limitations": ["BOT_IDENTITY_IS_NOT_HUMAN_OWNERSHIP", "SHARED_PAGE_ACCESS_IS_NOT_ENTERPRISE_INVENTORY", "EXACT_TOKEN_LIFETIME_UNCONFIRMED", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "notion.oauth.access_token", "provider": "notion", "kind": "ACCESS_TOKEN", "expiration_model": "PROVIDER_DEFINED", "review_due_at": "2026-12-08",
+      "sources": [{"url": "https://developers.notion.com/reference/introspect-token", "reviewed_at": "2026-09-09", "scope": "INTROSPECTION_REQUIRES_AUTHORIZED_APP_AND_TARGET_TOKEN"}],
+      "effects": [], "limitations": ["APP_TOKEN_BINDING_REQUIRED_FOR_INTROSPECTION", "EXACT_TOKEN_LIFETIME_UNCONFIRMED", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "notion.personal_access_token", "provider": "notion", "kind": "PERSONAL_ACCESS_TOKEN", "expiration_model": "PROVIDER_DEFINED", "review_due_at": "2026-12-08",
+      "sources": [{"url": "https://developers.notion.com/reference/admin/list-personal-access-tokens", "reviewed_at": "2026-09-09", "scope": "ENTERPRISE_PAT_INVENTORY_REQUIRES_SEPARATE_ADMIN_SCOPE"}],
+      "effects": [], "limitations": ["ENTERPRISE_AND_ADMIN_PERMISSION_REQUIRED", "OPAQUE_TOKEN_EXACT_MATCH_UNCONFIRMED", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "gcp.service_account.key", "provider": "gcp", "kind": "PRIVATE_KEY", "expiration_model": "PROVIDER_DEFINED", "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://cloud.google.com/iam/docs/keys-create-delete", "reviewed_at": "2026-09-08", "scope": "SERVICE_ACCOUNT_KEY_DELETE_DOES_NOT_REVOKE_DERIVED_CREDENTIALS"}],
+      "effects": [{"action": "DELETE", "effect": "SERVICE_ACCOUNT_KEY_DELETED", "derived_token_effect": "NOT_REVOKED", "reversible": false, "conditions": ["EXACT_SERVICE_ACCOUNT_AND_KEY_REQUIRED", "DERIVED_TOKEN_INVENTORY_MAY_BE_INCOMPLETE"]}],
+      "limitations": ["KEY_DELETION_DOES_NOT_REVOKE_DERIVED_TOKENS", "KEY_VALIDITY_FIELDS_AND_POLICY_REQUIRED", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    },
+    {
+      "type_id": "gcp.service_account.access_token", "provider": "gcp", "kind": "ACCESS_TOKEN", "expiration_model": "FIXED_DEFAULT", "default_ttl_seconds": 3600, "review_due_at": "2026-12-07",
+      "sources": [{"url": "https://cloud.google.com/docs/authentication/token-types", "reviewed_at": "2026-09-08", "scope": "SERVICE_ACCOUNT_ACCESS_TOKEN_NOT_INDIVIDUALLY_REVOCABLE"}, {"url": "https://cloud.google.com/iam/docs/creating-short-lived-service-account-credentials", "reviewed_at": "2026-09-08", "scope": "ACCESS_TOKEN_LIFETIME_DEPENDS_ON_ISSUANCE_AND_ORGANIZATION_POLICY"}, {"url": "https://cloud.google.com/iam/docs/reference/rest/v1/projects.serviceAccounts/disable", "reviewed_at": "2026-09-08", "scope": "DISABLED_ACCOUNT_REJECTS_TOKENS_REENABLED_ACCOUNT_ACCEPTS_EXISTING_TOKENS"}],
+      "effects": [{"action": "DISABLE_SERVICE_ACCOUNT", "effect": "ACCOUNT_ACCESS_BLOCKED_WHILE_DISABLED", "derived_token_effect": "REJECTED_WHILE_DISABLED", "reversible": true, "conditions": ["SHARED_ACCOUNT_WORKLOAD_IMPACT", "EXACT_SERVICE_ACCOUNT_REQUIRED"]}, {"action": "ENABLE_SERVICE_ACCOUNT", "effect": "ACCOUNT_ACCESS_RESTORED", "derived_token_effect": "UNEXPIRED_MAY_BE_ACCEPTED", "reversible": true, "conditions": ["DERIVED_TOKEN_INVENTORY_MAY_BE_INCOMPLETE", "EXACT_SERVICE_ACCOUNT_REQUIRED"]}],
+      "limitations": ["DEFAULT_TTL_IS_NOT_ACTUAL_EXPIRY", "TOKEN_LIFETIME_POLICY_CAN_EXTEND_DEFAULT", "TOKEN_NOT_INDIVIDUALLY_REVOCABLE", "REENABLING_CAN_RESTORE_UNEXPIRED_TOKEN_ACCESS", "PERMISSIONS_AND_MANAGEMENT_SCOPE_UNPROVEN"]
+    }
+  ],
+  "rules": [
+    {"detector_ids": ["aws-access_keys", "aws-access-key-pair-v1"], "credential_types": ["AWS_ACCESS_KEY"], "provider": "aws", "classification_status": "AMBIGUOUS", "candidate_type_ids": ["aws.iam.access_key", "aws.sts.session"], "basis": "AWS_IDENTIFIER_CLASS_REQUIRED"},
+    {"detector_ids": ["aws-session_keys"], "credential_types": ["AWS_SESSION_KEY"], "provider": "aws", "classification_status": "REVIEWED", "candidate_type_ids": ["aws.sts.session"], "basis": "DETECTOR_CREDENTIAL_TYPE"},
+    {"detector_ids": ["github-v1", "github-v2", "github-token-v1"], "credential_types": ["GITHUB_TOKEN"], "provider": "github", "classification_status": "AMBIGUOUS", "candidate_type_ids": ["github.pat.classic", "github.pat.fine_grained", "github.app.installation_token"], "basis": "GITHUB_VARIANT_NOT_SAVED_CANDIDATES_NONEXHAUSTIVE"},
+    {"detector_ids": ["githubapp"], "credential_types": ["GIT_HUB_APP"], "provider": "github", "classification_status": "REVIEWED", "candidate_type_ids": ["github.app.private_key"], "basis": "DETECTOR_CREDENTIAL_TYPE"},
+    {"detector_ids": ["notion", "notion-integration-token-v1"], "credential_types": ["NOTION"], "provider": "notion", "classification_status": "AMBIGUOUS", "candidate_type_ids": ["notion.integration.token", "notion.oauth.access_token", "notion.personal_access_token"], "basis": "TOKEN_PREFIX_DOES_NOT_PROVE_NOTION_OWNER_OR_SUBTYPE"},
+    {"detector_ids": ["gcp"], "credential_types": ["GCP"], "provider": "gcp", "classification_status": "AMBIGUOUS", "candidate_type_ids": ["gcp.service_account.key"], "basis": "SERVICE_ACCOUNT_JSON_TYPE_NOT_SAVED"},
+    {"detector_ids": ["privatekey"], "credential_types": ["PRIVATE_KEY"], "provider": "", "classification_status": "UNCLASSIFIED", "candidate_type_ids": [], "basis": "GENERIC_PRIVATE_KEY_HAS_NO_PROVIDER_BINDING"}
+  ]
+}

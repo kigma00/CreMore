@@ -1,0 +1,9 @@
+# Normalize line endings: source is LF in the repo regardless of checkout OS.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

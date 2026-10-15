@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {
+      "id": "sentinel",
+      "provider": "http_json",
+      "options": {
+        "endpoint": "https://cremore-dce.koreacentral-1.ingest.monitor.azure.com/dataCollectionRules/dcr-00000000000000000000000000000000/streams/Custom-CreMoreEvents",
+        "query": {"api-version": "2023-01-01"},
+        "body": "array",
+        "oauth": {
+          "token_url": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/oauth2/v2.0/token",
+          "client_id": "00000000-0000-0000-0000-000000000000",
+          "client_secret_env": "SENTINEL_CLIENT_SECRET",
+          "scope": "https://monitor.azure.com//.default"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+# Azure through Microsoft Entra workload identity federation with your IdP. Add after
+# refresher.yml. DefaultAzureCredential's WorkloadIdentityCredential reads these.
+services:
+  api:
+    environment: &azure-workload-identity
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:?set the Entra application (client) ID}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:?set the Entra tenant ID}
+      AZURE_FEDERATED_TOKEN_FILE: /run/cremore-identity/cloud/${AZURE_FEDERATED_TOKEN_NAME:-azure}
+      AZURE_AUTHORITY_HOST: ${AZURE_AUTHORITY_HOST:-https://login.microsoftonline.com/}
+  worker:
+    environment: *azure-workload-identity

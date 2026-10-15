@@ -1,0 +1,30 @@
+"""Keycloak onboarding contract; importing it performs no collection."""
+
+DESCRIPTOR = {
+    "provider": "keycloak",
+    "label": "Keycloak",
+    "purpose": ["identity_status"],
+    "identity_role": "idp",
+    "editions": ["self_managed", "cloud"],
+    "origins": [],
+    "origin_hint": "https://sso.example.com",
+    "tenant": "realm",
+    "auth_types": ["oauth_client"],
+    "auth_secret_roles": {"oauth_client": ["client_id", "client_secret"]},
+    "scope_kinds": ["realm"],
+    "capabilities": ["identity_status", "audit"],
+    "modes": ["inventory"],
+    "options": ["page_size", "api_path", "include_audit_events", "audit_lookback_days", "sources"],
+    "defaults": {"options": {"page_size": 100, "audit_lookback_days": 90}},
+    "required_permissions": ["realm-management/view-users", "realm-management/view-events (admin events only)",
+                             "realm-management/view-clients (client list option only)"],
+    "native_export": False,
+    "compare": False,
+    "recollect": False,
+    "limitations": [
+        "CONFIDENTIAL_CLIENT_WITH_SERVICE_ACCOUNT_REQUIRED",
+        "EMAILS_AND_LOGINS_ARE_KEPT_ONLY_AS_KEYED_DIGESTS",
+        "ONLY_VERIFIED_EMAILS_ARE_USED",
+        "DISABLE_TIME_NEEDS_ADMIN_EVENTS_WITH_REPRESENTATION",
+    ],
+}

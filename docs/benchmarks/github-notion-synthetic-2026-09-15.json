@@ -1,0 +1,697 @@
+{
+  "benchmark": "github_notion_collector_scan_service",
+  "metadata": {
+    "baseline_commit": "8780f9d31191090d35e81f86df8394e4c002da10",
+    "baseline_module_sha256": {
+      "cremore/collectors/github.py": "ea709cfc18200221825be023ab4e127c2451ab6646e974091eb0b33e06af3602",
+      "cremore/collectors/notion.py": "4e9da2fd7f5ae91f219f6ee623ad3159945b6e5952cda3a439924497ef65a1c6",
+      "cremore/http_client.py": "42576bed3c20843a70e624f791e3cba68ca6fc0594d44dc5ea1ad18a76eacf3e",
+      "cremore/scanning/service.py": "2c8c62e95ef0011fae1aa0b5cf893e07ed0e16a6e8c2737c4cfc5105c68df93d"
+    },
+    "bytes_definition": "http_response_body_bytes counts delivered synthetic serialized/compressed HTTP bodies; source_content_bytes_fetched counts uncompressed source bytes served (including duplicates); engine_input_bytes counts actual detector input",
+    "cache_preparation": "No artificial disabling or extra warmup; measured initial scan retained for the rescan of each branch/repetition",
+    "current_module_sha256": {
+      "cremore/collectors/base.py": "8924e0d5d156d57e1938ada8e9c7e241cc1e9bdc3e2a143c08d01a9e718a4dac",
+      "cremore/collectors/github.py": "47de1c4d8349ba5a39e4ada4ad23c87cea0ec380d9a25af97512df5a9c841a08",
+      "cremore/collectors/github_archive.py": "849ab33e1882a23b5b9b8acb09df8aa4b5b0543fd3e32bb3192ab2efaa6ecc4d",
+      "cremore/collectors/notion.py": "02667bb87a6001a4fa46f08121d2203a272e969b4b81297b941321ac4693f49b",
+      "cremore/db/repository.py": "62941adbe580c836ec8f1c6be0aeaff6910a6ae3e7cdbc45ee5703aa9e57821b",
+      "cremore/db/scan_store.py": "a67540f78012fff8e09a127dab7811baee9d9267acb1b9dad0642559cd83894a",
+      "cremore/detection/engine.py": "0163688cfb35db39d87ee096290f5b19372d84366fd75ddef633bf77f0524f4f",
+      "cremore/http_client.py": "f93e406fc3017eb3f1e479557f94731b755978a055f822bdfd058b55a43c00fe",
+      "cremore/scanning/orchestrator.py": "e0feeb0d9f1cbbd9c46712317278126f004343fd99cda9cd597bd3b3f0db5d8a",
+      "cremore/scanning/service.py": "3a8ee7c9a12221d36e87186be581c91cfe6623b2784b527c87901b46ea9448e9"
+    },
+    "interpretation": "Local wall seconds only. Request reduction is not the same as wall-time speedup; no extrapolated cloud minutes.",
+    "network": "Disabled socket connects; memory-only MockTransport, no latency sleeps/proxy/env credentials",
+    "not_measured": [
+      "cloud latency/rate limits/billing",
+      "PostgreSQL/disk/WAL",
+      "task leases/concurrency",
+      "index lag/failures",
+      "finding-heavy database writes",
+      "real provider credentials"
+    ],
+    "notion_watermark": "Explicit collector input represents successful initial scan start minus five-minute overlap; root runtime persistence is not benchmarked",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.9",
+    "scope": "collector_and_scan_service_microbenchmark_not_release_or_worker_end_to_end",
+    "shared_current_dependencies": [
+      "native builtin Engine",
+      "Orchestrator",
+      "InMemoryRepository",
+      "domain models",
+      "HTTPX MockTransport"
+    ],
+    "timer_excludes": [
+      "fixture generation/compression/serialization",
+      "Git source loading",
+      "engine compilation",
+      "client/repository construction"
+    ],
+    "timer_includes": [
+      "actual collection and response parsing",
+      "archive decompression/hash checks",
+      "native engine.scan calls",
+      "scan-service cache lookup/store",
+      "in-memory orchestration"
+    ],
+    "worktree_commit": "8780f9d31191090d35e81f86df8394e4c002da10"
+  },
+  "parameters": {
+    "bytes_per_item": 4096,
+    "changed_fraction": 0.01,
+    "changed_items": 100,
+    "include_nested": false,
+    "items": 10000,
+    "repetitions": 3,
+    "smoke_only": false
+  },
+  "scenarios": {
+    "github": {
+      "comparison_notes": "Identical whole-repository approval; legacy per-blob reads versus current verified tarball on initial scan, lazy SHA cache on rescan. No baseline GitHub revision cache exists in the loaded service/collector.",
+      "initial": {
+        "baseline": {
+          "median": {
+            "cache_reused": 0,
+            "engine_input_bytes": 40960000,
+            "engine_invocations": 10000,
+            "failures": 0,
+            "http_calls": 10002,
+            "http_calls_by_kind": {
+              "blob": 10000,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 56210094,
+            "objects_processed": 10000,
+            "source_content_bytes_fetched": 40960000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 21.315630899975076
+          },
+          "samples": [
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 10002,
+              "http_calls_by_kind": {
+                "blob": 10000,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 56210094,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 21.315630899975076
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 10002,
+              "http_calls_by_kind": {
+                "blob": 10000,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 56210094,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 29.021042100008344
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 10002,
+              "http_calls_by_kind": {
+                "blob": 10000,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 56210094,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 20.875158200011356
+            }
+          ],
+          "wall_max_seconds": 29.021042100008344,
+          "wall_min_seconds": 20.875158200011356
+        },
+        "current": {
+          "median": {
+            "cache_reused": 0,
+            "engine_input_bytes": 40960000,
+            "engine_invocations": 10000,
+            "failures": 0,
+            "http_calls": 5,
+            "http_calls_by_kind": {
+              "archive": 1,
+              "archive_redirect": 1,
+              "commit": 1,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 1471827,
+            "objects_processed": 10000,
+            "source_content_bytes_fetched": 40960000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 25.969721200002823
+          },
+          "samples": [
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 5,
+              "http_calls_by_kind": {
+                "archive": 1,
+                "archive_redirect": 1,
+                "commit": 1,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 1471827,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 25.824873799982015
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 5,
+              "http_calls_by_kind": {
+                "archive": 1,
+                "archive_redirect": 1,
+                "commit": 1,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 1471827,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 29.410736199992243
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 5,
+              "http_calls_by_kind": {
+                "archive": 1,
+                "archive_redirect": 1,
+                "commit": 1,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 1471827,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 25.969721200002823
+            }
+          ],
+          "wall_max_seconds": 29.410736199992243,
+          "wall_min_seconds": 25.824873799982015
+        },
+        "current_over_baseline_wall_ratio": 1.2183416630672277
+      },
+      "initial_dataset": {
+        "archive_compressed_bytes": 241614,
+        "dataset_sha256": "7d1487be7e9632d4822ef533186678f0fe1c7d409ddd1780630a28156c60f788",
+        "source_bytes": 40960000
+      },
+      "rescan_1pct_changed": {
+        "baseline": {
+          "median": {
+            "cache_reused": 0,
+            "engine_input_bytes": 40960000,
+            "engine_invocations": 10000,
+            "failures": 0,
+            "http_calls": 10002,
+            "http_calls_by_kind": {
+              "blob": 10000,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 56210094,
+            "objects_processed": 10000,
+            "source_content_bytes_fetched": 40960000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 21.21140299999388
+          },
+          "samples": [
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 10002,
+              "http_calls_by_kind": {
+                "blob": 10000,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 56210094,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 20.8283593999804
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 10002,
+              "http_calls_by_kind": {
+                "blob": 10000,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 56210094,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 21.21140299999388
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 10002,
+              "http_calls_by_kind": {
+                "blob": 10000,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 56210094,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 22.534807399992133
+            }
+          ],
+          "wall_max_seconds": 22.534807399992133,
+          "wall_min_seconds": 20.8283593999804
+        },
+        "current": {
+          "median": {
+            "cache_reused": 9900,
+            "engine_input_bytes": 409600,
+            "engine_invocations": 100,
+            "failures": 0,
+            "http_calls": 103,
+            "http_calls_by_kind": {
+              "blob": 100,
+              "commit": 1,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 1780013,
+            "objects_processed": 10000,
+            "source_content_bytes_fetched": 409600,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 0.3649169999989681
+          },
+          "samples": [
+            {
+              "cache_reused": 9900,
+              "engine_input_bytes": 409600,
+              "engine_invocations": 100,
+              "failures": 0,
+              "http_calls": 103,
+              "http_calls_by_kind": {
+                "blob": 100,
+                "commit": 1,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 1780013,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 409600,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 0.3649169999989681
+            },
+            {
+              "cache_reused": 9900,
+              "engine_input_bytes": 409600,
+              "engine_invocations": 100,
+              "failures": 0,
+              "http_calls": 103,
+              "http_calls_by_kind": {
+                "blob": 100,
+                "commit": 1,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 1780013,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 409600,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 0.35469859998556785
+            },
+            {
+              "cache_reused": 9900,
+              "engine_input_bytes": 409600,
+              "engine_invocations": 100,
+              "failures": 0,
+              "http_calls": 103,
+              "http_calls_by_kind": {
+                "blob": 100,
+                "commit": 1,
+                "repository_metadata": 1,
+                "tree": 1
+              },
+              "http_response_body_bytes": 1780013,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 409600,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 0.39368609999655746
+            }
+          ],
+          "wall_max_seconds": 0.39368609999655746,
+          "wall_min_seconds": 0.35469859998556785
+        },
+        "current_over_baseline_wall_ratio": 0.017203812496470572
+      },
+      "rescan_dataset": {
+        "archive_compressed_bytes": 241618,
+        "dataset_sha256": "ea44c6e7fc6449d681ca0a719b81deb529c4076e5df2a56a94e0bad69c2ce5cd",
+        "source_bytes": 40960000
+      }
+    },
+    "notion_flat_explicit_pages": {
+      "comparison_notes": "Identical explicit page IDs; current adds post-body header consistency checks, so initial HTTP calls can increase. Delta still reads every approved page header; only changed page bodies reach the engine. No nesting, so this isolates modified-time body skipping from boundary changes.",
+      "initial": {
+        "baseline": {
+          "median": {
+            "cache_reused": 0,
+            "engine_input_bytes": 40960000,
+            "engine_invocations": 10000,
+            "failures": 0,
+            "http_calls": 20000,
+            "http_calls_by_kind": {
+              "block_body": 10000,
+              "page_header": 10000
+            },
+            "http_response_body_bytes": 46100000,
+            "objects_processed": 10000,
+            "source_content_bytes_fetched": 40960000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 24.790396500000497
+          },
+          "samples": [
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 20000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 10000
+              },
+              "http_response_body_bytes": 46100000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 25.92057429999113
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 20000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 10000
+              },
+              "http_response_body_bytes": 46100000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 23.373400699987542
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 20000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 10000
+              },
+              "http_response_body_bytes": 46100000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 24.790396500000497
+            }
+          ],
+          "wall_max_seconds": 25.92057429999113,
+          "wall_min_seconds": 23.373400699987542
+        },
+        "current": {
+          "median": {
+            "cache_reused": 0,
+            "engine_input_bytes": 40960000,
+            "engine_invocations": 10000,
+            "failures": 0,
+            "http_calls": 30000,
+            "http_calls_by_kind": {
+              "block_body": 10000,
+              "page_header": 20000
+            },
+            "http_response_body_bytes": 48550000,
+            "objects_processed": 10000,
+            "source_content_bytes_fetched": 40960000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 24.98534970000037
+          },
+          "samples": [
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 30000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 20000
+              },
+              "http_response_body_bytes": 48550000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 26.075899700023
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 30000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 20000
+              },
+              "http_response_body_bytes": 48550000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 24.803015599987702
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 30000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 20000
+              },
+              "http_response_body_bytes": 48550000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 24.98534970000037
+            }
+          ],
+          "wall_max_seconds": 26.075899700023,
+          "wall_min_seconds": 24.803015599987702
+        },
+        "current_over_baseline_wall_ratio": 1.0078640613916712
+      },
+      "initial_dataset": {
+        "dataset_sha256": "7d1487be7e9632d4822ef533186678f0fe1c7d409ddd1780630a28156c60f788",
+        "source_bytes": 40960000
+      },
+      "rescan_1pct_changed": {
+        "baseline": {
+          "median": {
+            "cache_reused": 0,
+            "engine_input_bytes": 40960000,
+            "engine_invocations": 10000,
+            "failures": 0,
+            "http_calls": 20000,
+            "http_calls_by_kind": {
+              "block_body": 10000,
+              "page_header": 10000
+            },
+            "http_response_body_bytes": 46100000,
+            "objects_processed": 10000,
+            "source_content_bytes_fetched": 40960000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 24.86172230000375
+          },
+          "samples": [
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 20000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 10000
+              },
+              "http_response_body_bytes": 46100000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 25.051150600018445
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 20000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 10000
+              },
+              "http_response_body_bytes": 46100000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 22.99688380002044
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 40960000,
+              "engine_invocations": 10000,
+              "failures": 0,
+              "http_calls": 20000,
+              "http_calls_by_kind": {
+                "block_body": 10000,
+                "page_header": 10000
+              },
+              "http_response_body_bytes": 46100000,
+              "objects_processed": 10000,
+              "source_content_bytes_fetched": 40960000,
+              "unchanged_pages_skipped": 0,
+              "wall_seconds": 24.86172230000375
+            }
+          ],
+          "wall_max_seconds": 25.051150600018445,
+          "wall_min_seconds": 22.99688380002044
+        },
+        "current": {
+          "median": {
+            "cache_reused": 0,
+            "engine_input_bytes": 409600,
+            "engine_invocations": 100,
+            "failures": 0,
+            "http_calls": 10200,
+            "http_calls_by_kind": {
+              "block_body": 100,
+              "page_header": 10100
+            },
+            "http_response_body_bytes": 2911000,
+            "objects_processed": 100,
+            "source_content_bytes_fetched": 409600,
+            "unchanged_pages_skipped": 9900,
+            "wall_seconds": 1.5819456000172067
+          },
+          "samples": [
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 409600,
+              "engine_invocations": 100,
+              "failures": 0,
+              "http_calls": 10200,
+              "http_calls_by_kind": {
+                "block_body": 100,
+                "page_header": 10100
+              },
+              "http_response_body_bytes": 2911000,
+              "objects_processed": 100,
+              "source_content_bytes_fetched": 409600,
+              "unchanged_pages_skipped": 9900,
+              "wall_seconds": 1.5819456000172067
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 409600,
+              "engine_invocations": 100,
+              "failures": 0,
+              "http_calls": 10200,
+              "http_calls_by_kind": {
+                "block_body": 100,
+                "page_header": 10100
+              },
+              "http_response_body_bytes": 2911000,
+              "objects_processed": 100,
+              "source_content_bytes_fetched": 409600,
+              "unchanged_pages_skipped": 9900,
+              "wall_seconds": 1.6111114999803249
+            },
+            {
+              "cache_reused": 0,
+              "engine_input_bytes": 409600,
+              "engine_invocations": 100,
+              "failures": 0,
+              "http_calls": 10200,
+              "http_calls_by_kind": {
+                "block_body": 100,
+                "page_header": 10100
+              },
+              "http_response_body_bytes": 2911000,
+              "objects_processed": 100,
+              "source_content_bytes_fetched": 409600,
+              "unchanged_pages_skipped": 9900,
+              "wall_seconds": 1.5696164000255521
+            }
+          ],
+          "wall_max_seconds": 1.6111114999803249,
+          "wall_min_seconds": 1.5696164000255521
+        },
+        "current_over_baseline_wall_ratio": 0.06362976711460445
+      },
+      "rescan_dataset": {
+        "dataset_sha256": "ea44c6e7fc6449d681ca0a719b81deb529c4076e5df2a56a94e0bad69c2ce5cd",
+        "source_bytes": 40960000
+      }
+    }
+  },
+  "schema_version": 1
+}

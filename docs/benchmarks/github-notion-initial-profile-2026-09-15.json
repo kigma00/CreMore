@@ -1,0 +1,2418 @@
+{
+  "baseline_commit": "8780f9d31191090d35e81f86df8394e4c002da10",
+  "baseline_module_sha256": {
+    "cremore/collectors/github.py": "ea709cfc18200221825be023ab4e127c2451ab6646e974091eb0b33e06af3602",
+    "cremore/collectors/notion.py": "4e9da2fd7f5ae91f219f6ee623ad3159945b6e5952cda3a439924497ef65a1c6",
+    "cremore/http_client.py": "42576bed3c20843a70e624f791e3cba68ca6fc0594d44dc5ea1ad18a76eacf3e",
+    "cremore/scanning/service.py": "2c8c62e95ef0011fae1aa0b5cf893e07ed0e16a6e8c2737c4cfc5105c68df93d"
+  },
+  "bytes_per_item": 4096,
+  "current_module_sha256": {
+    "cremore/collectors/base.py": "8924e0d5d156d57e1938ada8e9c7e241cc1e9bdc3e2a143c08d01a9e718a4dac",
+    "cremore/collectors/github.py": "47de1c4d8349ba5a39e4ada4ad23c87cea0ec380d9a25af97512df5a9c841a08",
+    "cremore/collectors/github_archive.py": "849ab33e1882a23b5b9b8acb09df8aa4b5b0543fd3e32bb3192ab2efaa6ecc4d",
+    "cremore/collectors/notion.py": "02667bb87a6001a4fa46f08121d2203a272e969b4b81297b941321ac4693f49b",
+    "cremore/db/repository.py": "62941adbe580c836ec8f1c6be0aeaff6910a6ae3e7cdbc45ee5703aa9e57821b",
+    "cremore/db/scan_store.py": "a67540f78012fff8e09a127dab7811baee9d9267acb1b9dad0642559cd83894a",
+    "cremore/detection/engine.py": "0163688cfb35db39d87ee096290f5b19372d84366fd75ddef633bf77f0524f4f",
+    "cremore/http_client.py": "f93e406fc3017eb3f1e479557f94731b755978a055f822bdfd058b55a43c00fe",
+    "cremore/scanning/orchestrator.py": "e0feeb0d9f1cbbd9c46712317278126f004343fd99cda9cd597bd3b3f0db5d8a",
+    "cremore/scanning/service.py": "3a8ee7c9a12221d36e87186be581c91cfe6623b2784b527c87901b46ea9448e9"
+  },
+  "excludes": [
+    "network",
+    "SQL",
+    "worker leases/checkpoints",
+    "provider verification",
+    "fixture construction",
+    "engine construction",
+    "object reconciliation"
+  ],
+  "initial_scans_per_variant": 3,
+  "items_per_scan": 1000,
+  "method": "Each initial scan starts with fresh memory repository; alternating variant order",
+  "purpose": "Initial cost attribution; profiler overhead is not benchmark latency",
+  "python": "3.12.9",
+  "scenarios": {
+    "github": {
+      "baseline": {
+        "functions": [
+          {
+            "calls": 3,
+            "cumulative_seconds": 9.9340548,
+            "file": "cremore/scanning/service.py",
+            "function": "run",
+            "line": 33,
+            "primitive_calls": 3,
+            "self_seconds": 0.0140379
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.1879615,
+            "file": "cremore/scanning/orchestrator.py",
+            "function": "scan_resource",
+            "line": 149,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0244429
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.151905300000001,
+            "file": "benchmark_github_notion_scan.py",
+            "function": "scan",
+            "line": 226,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0071983
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.144310500000001,
+            "file": "cremore/detection/engine.py",
+            "function": "scan",
+            "line": 177,
+            "primitive_calls": 3000,
+            "self_seconds": 0.6372939000000001
+          },
+          {
+            "calls": 5157006,
+            "cumulative_seconds": 6.7984571,
+            "file": "~",
+            "function": "<built-in method builtins.any>",
+            "line": 0,
+            "primitive_calls": 5157006,
+            "self_seconds": 1.4380446
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 3.9099794,
+            "file": "cremore/detection/engine.py",
+            "function": "_redacted_lines",
+            "line": 241,
+            "primitive_calls": 3000,
+            "self_seconds": 0.5862512000000001
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.6309651,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 244,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.6309651
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.5813412000000002,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 195,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.5813412000000002
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 1.7302126000000002,
+            "file": "cremore/collectors/github.py",
+            "function": "collect",
+            "line": 128,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0229893
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 1.6884147,
+            "file": "cremore/collectors/github.py",
+            "function": "_blob",
+            "line": 170,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0154286
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 1.6420867000000001,
+            "file": "cremore/collectors/github.py",
+            "function": "_get_json",
+            "line": 100,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0130457
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 1.6111254000000002,
+            "file": "cremore/collectors/github.py",
+            "function": "_fetch_json",
+            "line": 32,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0066451
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 1.5533013,
+            "file": "cremore/http_client.py",
+            "function": "bounded_request",
+            "line": 28,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0286834
+          },
+          {
+            "calls": 36072,
+            "cumulative_seconds": 1.2471427000000002,
+            "file": "~",
+            "function": "<built-in method builtins.next>",
+            "line": 0,
+            "primitive_calls": 24048,
+            "self_seconds": 0.0164867
+          },
+          {
+            "calls": 15030,
+            "cumulative_seconds": 1.2439181000000001,
+            "file": "contextlib.py",
+            "function": "__enter__",
+            "line": 132,
+            "primitive_calls": 12024,
+            "self_seconds": 0.0086945
+          },
+          {
+            "calls": 6012,
+            "cumulative_seconds": 1.2339136000000002,
+            "file": "httpx/_client.py",
+            "function": "stream",
+            "line": 827,
+            "primitive_calls": 6012,
+            "self_seconds": 0.009186900000000001
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.6859625,
+            "file": "httpx/_client.py",
+            "function": "build_request",
+            "line": 340,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0204102
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.5371856,
+            "file": "httpx/_client.py",
+            "function": "send",
+            "line": 879,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0077888
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.5122239000000001,
+            "file": "httpx/_client.py",
+            "function": "_send_handling_auth",
+            "line": 930,
+            "primitive_calls": 3006,
+            "self_seconds": 0.006253900000000001
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.49237610000000004,
+            "file": "httpx/_client.py",
+            "function": "_send_handling_redirects",
+            "line": 964,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0060273
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.4835671,
+            "file": "httpx/_client.py",
+            "function": "_send_single_request",
+            "line": 1001,
+            "primitive_calls": 3006,
+            "self_seconds": 0.027319600000000003
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.35950170000000004,
+            "file": "httpx/_client.py",
+            "function": "_merge_url",
+            "line": 391,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0050201
+          },
+          {
+            "calls": 6012,
+            "cumulative_seconds": 0.3573142,
+            "file": "httpx/_urls.py",
+            "function": "__init__",
+            "line": 77,
+            "primitive_calls": 6012,
+            "self_seconds": 0.0106171
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.3443603,
+            "file": "httpx/_urlparse.py",
+            "function": "urlparse",
+            "line": 213,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0359131
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.3308757,
+            "file": "httpx/_models.py",
+            "function": "extract_cookies",
+            "line": 1101,
+            "primitive_calls": 3006,
+            "self_seconds": 0.007889700000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.28105230000000003,
+            "file": "cremore/detection/decoders.py",
+            "function": "decoded_views",
+            "line": 169,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0126543
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.24236300000000002,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 1249,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0174138
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.24181380000000002,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_base64",
+            "line": 60,
+            "primitive_calls": 3000,
+            "self_seconds": 0.2363879
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.1623487,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 383,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0166986
+          },
+          {
+            "calls": 6015,
+            "cumulative_seconds": 0.1597201,
+            "file": "httpx/_models.py",
+            "function": "iter_bytes",
+            "line": 884,
+            "primitive_calls": 6015,
+            "self_seconds": 0.020712900000000003
+          },
+          {
+            "calls": 300375,
+            "cumulative_seconds": 0.14810620000000002,
+            "file": "httpx/_urlparse.py",
+            "function": "<genexpr>",
+            "line": 223,
+            "primitive_calls": 300375,
+            "self_seconds": 0.0914262
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.1438908,
+            "file": "request.py",
+            "function": "__init__",
+            "line": 315,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0117059
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.12552180000000002,
+            "file": "httpx/_client.py",
+            "function": "_merge_headers",
+            "line": 424,
+            "primitive_calls": 3006,
+            "self_seconds": 0.006393
+          },
+          {
+            "calls": 15030,
+            "cumulative_seconds": 0.11993670000000001,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 144,
+            "primitive_calls": 15030,
+            "self_seconds": 0.0473314
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.1154111,
+            "file": "httpx/_models.py",
+            "function": "update",
+            "line": 274,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0101455
+          },
+          {
+            "calls": 30057,
+            "cumulative_seconds": 0.09181030000000001,
+            "file": "~",
+            "function": "<built-in method builtins.getattr>",
+            "line": 0,
+            "primitive_calls": 30057,
+            "self_seconds": 0.0106566
+          },
+          {
+            "calls": 6015,
+            "cumulative_seconds": 0.08949,
+            "file": "httpx/_models.py",
+            "function": "iter_raw",
+            "line": 935,
+            "primitive_calls": 6015,
+            "self_seconds": 0.0170785
+          },
+          {
+            "calls": 30060,
+            "cumulative_seconds": 0.0873593,
+            "file": "httpx/_models.py",
+            "function": "__getitem__",
+            "line": 284,
+            "primitive_calls": 30060,
+            "self_seconds": 0.0482824
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.0505026,
+            "file": "cremore/http_client.py",
+            "function": "json",
+            "line": 24,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0036568000000000004
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.0188842,
+            "file": "cremore/http_client.py",
+            "function": "_check_content_length",
+            "line": 69,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0069373
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0136071,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_utf16",
+            "line": 95,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0078021
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.010957600000000001,
+            "file": "cremore/detection/engine.py",
+            "function": "__init__",
+            "line": 47,
+            "primitive_calls": 3000,
+            "self_seconds": 0.010957600000000001
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.0100713,
+            "file": "cremore/collectors/github.py",
+            "function": "_headers",
+            "line": 93,
+            "primitive_calls": 3006,
+            "self_seconds": 0.004737900000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.006617100000000001,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_unicode_escape",
+            "line": 126,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0016183
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.0053334,
+            "file": "cremore/github_auth.py",
+            "function": "resolve_github_token",
+            "line": 174,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0032827000000000004
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.005316,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_html_entities",
+            "line": 146,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0010057
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0043363,
+            "file": "cremore/collectors/github.py",
+            "function": "_base64_limits",
+            "line": 204,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0043363
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.004303700000000001,
+            "file": "cremore/http_client.py",
+            "function": "__init__",
+            "line": 15,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0017436
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0024877000000000002,
+            "file": "cremore/collectors/github.py",
+            "function": "_exposure",
+            "line": 122,
+            "primitive_calls": 3,
+            "self_seconds": 0.0000083
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.001884,
+            "file": "cremore/collectors/base.py",
+            "function": "consume",
+            "line": 68,
+            "primitive_calls": 3006,
+            "self_seconds": 0.001884
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0015012,
+            "file": "cremore/collectors/github.py",
+            "function": "_selected",
+            "line": 115,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0015012
+          }
+        ],
+        "samples": [
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 1002,
+            "http_calls_by_kind": {
+              "blob": 1000,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 5621094,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 2.8916842000035103
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 1002,
+            "http_calls_by_kind": {
+              "blob": 1000,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 5621094,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 3.39048180001555
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 1002,
+            "http_calls_by_kind": {
+              "blob": 1000,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 5621094,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 3.6521446999977343
+          }
+        ],
+        "total_profiled_self_seconds": 9.925913600000001
+      },
+      "current": {
+        "functions": [
+          {
+            "calls": 3,
+            "cumulative_seconds": 10.3845627,
+            "file": "cremore/scanning/service.py",
+            "function": "run",
+            "line": 48,
+            "primitive_calls": 3,
+            "self_seconds": 0.5705871
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.176938,
+            "file": "benchmark_github_notion_scan.py",
+            "function": "scan",
+            "line": 226,
+            "primitive_calls": 3000,
+            "self_seconds": 0.007190500000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.169174100000001,
+            "file": "cremore/detection/engine.py",
+            "function": "scan",
+            "line": 177,
+            "primitive_calls": 3000,
+            "self_seconds": 0.6357161
+          },
+          {
+            "calls": 5157018,
+            "cumulative_seconds": 6.654368000000001,
+            "file": "~",
+            "function": "<built-in method builtins.any>",
+            "line": 0,
+            "primitive_calls": 5157018,
+            "self_seconds": 1.406122
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 3.8925210000000003,
+            "file": "cremore/detection/engine.py",
+            "function": "_redacted_lines",
+            "line": 241,
+            "primitive_calls": 3000,
+            "self_seconds": 0.5776804
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.6298669,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 244,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.6298669
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.6151772,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 195,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.6151772
+          },
+          {
+            "calls": 15165,
+            "cumulative_seconds": 1.3125106,
+            "file": "~",
+            "function": "<built-in method builtins.next>",
+            "line": 0,
+            "primitive_calls": 15003,
+            "self_seconds": 0.009128
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 1.293514,
+            "file": "cremore/collectors/github.py",
+            "function": "collect",
+            "line": 223,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0118089
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 1.2490677000000001,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "archive_blobs",
+            "line": 81,
+            "primitive_calls": 3003,
+            "self_seconds": 0.044256000000000004
+          },
+          {
+            "calls": 4354,
+            "cumulative_seconds": 0.9328198000000001,
+            "file": "~",
+            "function": "<method 'read' of '_io.BufferedReader' objects>",
+            "line": 0,
+            "primitive_calls": 3154,
+            "self_seconds": 0.8250081
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.28947100000000003,
+            "file": "cremore/detection/decoders.py",
+            "function": "decoded_views",
+            "line": 169,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0143814
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.2475871,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_base64",
+            "line": 60,
+            "primitive_calls": 3000,
+            "self_seconds": 0.2405612
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 0.19311260000000002,
+            "file": "tarfile.py",
+            "function": "__iter__",
+            "line": 2761,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0042653000000000005
+          },
+          {
+            "calls": 3006,
+            "cumulative_seconds": 0.18909810000000002,
+            "file": "tarfile.py",
+            "function": "next",
+            "line": 2620,
+            "primitive_calls": 3006,
+            "self_seconds": 0.0081128
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 0.1780342,
+            "file": "tarfile.py",
+            "function": "fromtarfile",
+            "line": 1292,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0081156
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.13262190000000001,
+            "file": "cremore/db/scan_store.py",
+            "function": "cache",
+            "line": 151,
+            "primitive_calls": 3000,
+            "self_seconds": 0.023758400000000002
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 0.12457760000000001,
+            "file": "tarfile.py",
+            "function": "frombuf",
+            "line": 1229,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0252414
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.1165443,
+            "file": "cremore/db/scan_store.py",
+            "function": "stable_digest",
+            "line": 44,
+            "primitive_calls": 9000,
+            "self_seconds": 0.016236900000000002
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.10814080000000001,
+            "file": "tarfile.py",
+            "function": "readinto",
+            "line": 701,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0150971
+          },
+          {
+            "calls": 9003,
+            "cumulative_seconds": 0.0941376,
+            "file": "tarfile.py",
+            "function": "read",
+            "line": 525,
+            "primitive_calls": 9003,
+            "self_seconds": 0.007172
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.0911671,
+            "file": "__init__.py",
+            "function": "dumps",
+            "line": 183,
+            "primitive_calls": 12000,
+            "self_seconds": 0.022612800000000002
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.09064240000000001,
+            "file": "tarfile.py",
+            "function": "read",
+            "line": 670,
+            "primitive_calls": 6000,
+            "self_seconds": 0.011185200000000001
+          },
+          {
+            "calls": 9003,
+            "cumulative_seconds": 0.08588900000000001,
+            "file": "tarfile.py",
+            "function": "_read",
+            "line": 532,
+            "primitive_calls": 9003,
+            "self_seconds": 0.0082603
+          },
+          {
+            "calls": 9003,
+            "cumulative_seconds": 0.07762870000000001,
+            "file": "tarfile.py",
+            "function": "__read",
+            "line": 559,
+            "primitive_calls": 9003,
+            "self_seconds": 0.021995300000000002
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.06423630000000001,
+            "file": "encoder.py",
+            "function": "encode",
+            "line": 183,
+            "primitive_calls": 12000,
+            "self_seconds": 0.0179499
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.06339270000000001,
+            "file": "cremore/db/scan_store.py",
+            "function": "cached",
+            "line": 140,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0108748
+          },
+          {
+            "calls": 24000,
+            "cumulative_seconds": 0.0522197,
+            "file": "tarfile.py",
+            "function": "nti",
+            "line": 175,
+            "primitive_calls": 24000,
+            "self_seconds": 0.0231785
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.049802000000000006,
+            "file": "cremore/scanning/orchestrator.py",
+            "function": "using",
+            "line": 87,
+            "primitive_calls": 3000,
+            "self_seconds": 0.003941200000000001
+          },
+          {
+            "calls": 1353,
+            "cumulative_seconds": 0.0495103,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "read",
+            "line": 68,
+            "primitive_calls": 1353,
+            "self_seconds": 0.0037228
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0458608,
+            "file": "copy.py",
+            "function": "copy",
+            "line": 61,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0159666
+          },
+          {
+            "calls": 1353,
+            "cumulative_seconds": 0.044805500000000005,
+            "file": "gzip.py",
+            "function": "read",
+            "line": 319,
+            "primitive_calls": 1353,
+            "self_seconds": 0.0025159
+          },
+          {
+            "calls": 39000,
+            "cumulative_seconds": 0.0403123,
+            "file": "tarfile.py",
+            "function": "nts",
+            "line": 167,
+            "primitive_calls": 39000,
+            "self_seconds": 0.021873100000000003
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.0380539,
+            "file": "encoder.py",
+            "function": "iterencode",
+            "line": 205,
+            "primitive_calls": 12000,
+            "self_seconds": 0.0380539
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0355156,
+            "file": "tarfile.py",
+            "function": "extractfile",
+            "line": 2392,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0064779
+          },
+          {
+            "calls": 1692,
+            "cumulative_seconds": 0.0352272,
+            "file": "_compression.py",
+            "function": "readinto",
+            "line": 66,
+            "primitive_calls": 1692,
+            "self_seconds": 0.0064269
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.026584700000000003,
+            "file": "tarfile.py",
+            "function": "__init__",
+            "line": 712,
+            "primitive_calls": 3000,
+            "self_seconds": 0.020102000000000002
+          },
+          {
+            "calls": 1692,
+            "cumulative_seconds": 0.026431000000000003,
+            "file": "gzip.py",
+            "function": "read",
+            "line": 502,
+            "primitive_calls": 1692,
+            "self_seconds": 0.0064866
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0252922,
+            "file": "tarfile.py",
+            "function": "calc_chksums",
+            "line": 225,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0057907
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0226178,
+            "file": "cremore/scanning/orchestrator.py",
+            "function": "scan_resource",
+            "line": 149,
+            "primitive_calls": 3000,
+            "self_seconds": 0.014231500000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.017877900000000002,
+            "file": "cremore/collectors/github.py",
+            "function": "_object",
+            "line": 290,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0135317
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.014111100000000001,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_utf16",
+            "line": 95,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0084025
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.010061500000000001,
+            "file": "cremore/detection/engine.py",
+            "function": "__init__",
+            "line": 47,
+            "primitive_calls": 3000,
+            "self_seconds": 0.010061500000000001
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.009946700000000001,
+            "file": "cremore/db/scan_store.py",
+            "function": "_transaction",
+            "line": 65,
+            "primitive_calls": 12000,
+            "self_seconds": 0.0081274
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.00721,
+            "file": "cremore/collectors/github.py",
+            "function": "_get_json",
+            "line": 124,
+            "primitive_calls": 9,
+            "self_seconds": 0.0000351
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.007139100000000001,
+            "file": "cremore/collectors/github.py",
+            "function": "_fetch_json",
+            "line": 38,
+            "primitive_calls": 9,
+            "self_seconds": 0.0000283
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.006754100000000001,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_unicode_escape",
+            "line": 126,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0017364000000000001
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.0057088,
+            "file": "cremore/http_client.py",
+            "function": "bounded_request",
+            "line": 33,
+            "primitive_calls": 9,
+            "self_seconds": 0.0000472
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.0056392000000000005,
+            "file": "cremore/http_client.py",
+            "function": "_request_once",
+            "line": 89,
+            "primitive_calls": 9,
+            "self_seconds": 0.0001162
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.005414,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_html_entities",
+            "line": 146,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0009918000000000001
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0047385000000000005,
+            "file": "cremore/collectors/github.py",
+            "function": "_entries",
+            "line": 153,
+            "primitive_calls": 3,
+            "self_seconds": 0.0000443
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 0.0043007,
+            "file": "cremore/db/scan_store.py",
+            "function": "__init__",
+            "line": 53,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0026554
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0025733,
+            "file": "cremore/collectors/github.py",
+            "function": "_exposure",
+            "line": 217,
+            "primitive_calls": 3,
+            "self_seconds": 0.000012100000000000001
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.0023988,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "<genexpr>",
+            "line": 136,
+            "primitive_calls": 12000,
+            "self_seconds": 0.0023988
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0016495000000000001,
+            "file": "cremore/collectors/github.py",
+            "function": "_selected",
+            "line": 138,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0016495000000000001
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.0014009,
+            "file": "cremore/http_client.py",
+            "function": "json",
+            "line": 29,
+            "primitive_calls": 9,
+            "self_seconds": 0.000014700000000000002
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0006374,
+            "file": "cremore/collectors/base.py",
+            "function": "read",
+            "line": 28,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0006374
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.00019700000000000002,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "read",
+            "line": 42,
+            "primitive_calls": 9,
+            "self_seconds": 0.000041400000000000003
+          },
+          {
+            "calls": 6,
+            "cumulative_seconds": 0.0001778,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "_origin",
+            "line": 27,
+            "primitive_calls": 6,
+            "self_seconds": 0.0000404
+          },
+          {
+            "calls": 1,
+            "cumulative_seconds": 0.0000769,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "<module>",
+            "line": 1,
+            "primitive_calls": 1,
+            "self_seconds": 0.0000293
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.000067,
+            "file": "cremore/http_client.py",
+            "function": "_check_content_length",
+            "line": 123,
+            "primitive_calls": 9,
+            "self_seconds": 0.0000271
+          },
+          {
+            "calls": 12,
+            "cumulative_seconds": 0.0000424,
+            "file": "cremore/collectors/github.py",
+            "function": "_headers",
+            "line": 117,
+            "primitive_calls": 12,
+            "self_seconds": 0.0000158
+          },
+          {
+            "calls": 9,
+            "cumulative_seconds": 0.0000327,
+            "file": "cremore/http_client.py",
+            "function": "__init__",
+            "line": 20,
+            "primitive_calls": 9,
+            "self_seconds": 0.0000074
+          },
+          {
+            "calls": 12,
+            "cumulative_seconds": 0.000026600000000000003,
+            "file": "cremore/github_auth.py",
+            "function": "resolve_github_token",
+            "line": 174,
+            "primitive_calls": 12,
+            "self_seconds": 0.0000194
+          },
+          {
+            "calls": 15,
+            "cumulative_seconds": 0.0000247,
+            "file": "cremore/collectors/github.py",
+            "function": "_request",
+            "line": 113,
+            "primitive_calls": 15,
+            "self_seconds": 0.0000129
+          },
+          {
+            "calls": 15,
+            "cumulative_seconds": 0.0000118,
+            "file": "cremore/collectors/base.py",
+            "function": "consume",
+            "line": 68,
+            "primitive_calls": 15,
+            "self_seconds": 0.0000118
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0000045,
+            "file": "cremore/scanning/service.py",
+            "function": "<lambda>",
+            "line": 32,
+            "primitive_calls": 3,
+            "self_seconds": 0.0000045
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0000038,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "__init__",
+            "line": 36,
+            "primitive_calls": 3,
+            "self_seconds": 0.0000032000000000000003
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0000015,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "__init__",
+            "line": 64,
+            "primitive_calls": 3,
+            "self_seconds": 0.0000015
+          },
+          {
+            "calls": 1,
+            "cumulative_seconds": 5.000000000000001e-7,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "_Chunks",
+            "line": 35,
+            "primitive_calls": 1,
+            "self_seconds": 5.000000000000001e-7
+          },
+          {
+            "calls": 1,
+            "cumulative_seconds": 4.0000000000000003e-7,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "ArchiveUnavailable",
+            "line": 23,
+            "primitive_calls": 1,
+            "self_seconds": 4.0000000000000003e-7
+          },
+          {
+            "calls": 1,
+            "cumulative_seconds": 4.0000000000000003e-7,
+            "file": "cremore/collectors/github_archive.py",
+            "function": "_Expanded",
+            "line": 63,
+            "primitive_calls": 1,
+            "self_seconds": 4.0000000000000003e-7
+          }
+        ],
+        "samples": [
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 5,
+            "http_calls_by_kind": {
+              "archive": 1,
+              "archive_redirect": 1,
+              "commit": 1,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 147626,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 3.6560698999965098
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 5,
+            "http_calls_by_kind": {
+              "archive": 1,
+              "archive_redirect": 1,
+              "commit": 1,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 147626,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 3.4086167000059504
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 5,
+            "http_calls_by_kind": {
+              "archive": 1,
+              "archive_redirect": 1,
+              "commit": 1,
+              "repository_metadata": 1,
+              "tree": 1
+            },
+            "http_response_body_bytes": 147626,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 3.320523600006709
+          }
+        ],
+        "total_profiled_self_seconds": 10.3751684
+      },
+      "dataset": {
+        "archive_compressed_bytes": 24413,
+        "dataset_sha256": "603a03dd70d4bc3781ee8324ddefc701cdd147153c75760a9dbedeb3935f846f",
+        "source_bytes": 4096000
+      }
+    },
+    "notion": {
+      "baseline": {
+        "functions": [
+          {
+            "calls": 3,
+            "cumulative_seconds": 11.6688472,
+            "file": "cremore/scanning/service.py",
+            "function": "run",
+            "line": 33,
+            "primitive_calls": 3,
+            "self_seconds": 0.014939000000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.3720449,
+            "file": "cremore/scanning/orchestrator.py",
+            "function": "scan_resource",
+            "line": 149,
+            "primitive_calls": 3000,
+            "self_seconds": 0.027023500000000002
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.3321307,
+            "file": "benchmark_github_notion_scan.py",
+            "function": "scan",
+            "line": 226,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0079676
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.3237558,
+            "file": "cremore/detection/engine.py",
+            "function": "scan",
+            "line": 177,
+            "primitive_calls": 3000,
+            "self_seconds": 0.6630992
+          },
+          {
+            "calls": 5160000,
+            "cumulative_seconds": 7.0147254000000006,
+            "file": "~",
+            "function": "<built-in method builtins.any>",
+            "line": 0,
+            "primitive_calls": 5160000,
+            "self_seconds": 1.4688158
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 3.9984629000000003,
+            "file": "cremore/detection/engine.py",
+            "function": "_redacted_lines",
+            "line": 241,
+            "primitive_calls": 3000,
+            "self_seconds": 0.6210618
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 3.2799242000000004,
+            "file": "cremore/collectors/notion.py",
+            "function": "collect",
+            "line": 110,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0240158
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 3.1744964,
+            "file": "cremore/collectors/notion.py",
+            "function": "_get",
+            "line": 88,
+            "primitive_calls": 6000,
+            "self_seconds": 0.021252300000000002
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 3.024277,
+            "file": "cremore/http_client.py",
+            "function": "bounded_request",
+            "line": 28,
+            "primitive_calls": 6000,
+            "self_seconds": 0.053969300000000005
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.6779428000000003,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 244,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.6779428000000003
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.6309878,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 195,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.6309878
+          },
+          {
+            "calls": 72000,
+            "cumulative_seconds": 2.4261818,
+            "file": "~",
+            "function": "<built-in method builtins.next>",
+            "line": 0,
+            "primitive_calls": 48000,
+            "self_seconds": 0.031059100000000003
+          },
+          {
+            "calls": 30000,
+            "cumulative_seconds": 2.4187144000000003,
+            "file": "contextlib.py",
+            "function": "__enter__",
+            "line": 132,
+            "primitive_calls": 24000,
+            "self_seconds": 0.0159929
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 2.4005999,
+            "file": "httpx/_client.py",
+            "function": "stream",
+            "line": 827,
+            "primitive_calls": 12000,
+            "self_seconds": 0.0180539
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 1.6608515000000001,
+            "file": "cremore/collectors/notion.py",
+            "function": "_iter_pages",
+            "line": 139,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0067488
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 1.5693908,
+            "file": "cremore/collectors/notion.py",
+            "function": "_page_data",
+            "line": 169,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0099339
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 1.5594569,
+            "file": "cremore/collectors/notion.py",
+            "function": "walk",
+            "line": 193,
+            "primitive_calls": 3000,
+            "self_seconds": 0.013335300000000001
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 1.2835876000000002,
+            "file": "httpx/_client.py",
+            "function": "build_request",
+            "line": 340,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0397952
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 1.0956661,
+            "file": "httpx/_client.py",
+            "function": "send",
+            "line": 879,
+            "primitive_calls": 6000,
+            "self_seconds": 0.014966400000000001
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 1.0480924,
+            "file": "httpx/_client.py",
+            "function": "_send_handling_auth",
+            "line": 930,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0123183
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 1.0103366,
+            "file": "httpx/_client.py",
+            "function": "_send_handling_redirects",
+            "line": 964,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0120721
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.9929249000000001,
+            "file": "httpx/_client.py",
+            "function": "_send_single_request",
+            "line": 1001,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0528836
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.7006049000000001,
+            "file": "httpx/_models.py",
+            "function": "extract_cookies",
+            "line": 1101,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0150834
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.6382782,
+            "file": "httpx/_client.py",
+            "function": "_merge_url",
+            "line": 391,
+            "primitive_calls": 6000,
+            "self_seconds": 0.010025200000000001
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.6340742,
+            "file": "httpx/_urls.py",
+            "function": "__init__",
+            "line": 77,
+            "primitive_calls": 12000,
+            "self_seconds": 0.0208045
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.6081724000000001,
+            "file": "httpx/_urlparse.py",
+            "function": "urlparse",
+            "line": 213,
+            "primitive_calls": 6000,
+            "self_seconds": 0.07328570000000001
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.5274587000000001,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 1249,
+            "primitive_calls": 6000,
+            "self_seconds": 0.035973500000000005
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.35173150000000003,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 383,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0352309
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.3178978,
+            "file": "httpx/_models.py",
+            "function": "iter_bytes",
+            "line": 884,
+            "primitive_calls": 12000,
+            "self_seconds": 0.0408839
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.2934741,
+            "file": "request.py",
+            "function": "__init__",
+            "line": 315,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0239452
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.288358,
+            "file": "cremore/detection/decoders.py",
+            "function": "decoded_views",
+            "line": 169,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0133606
+          },
+          {
+            "calls": 30000,
+            "cumulative_seconds": 0.2712799,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 144,
+            "primitive_calls": 30000,
+            "self_seconds": 0.1090707
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.24800070000000002,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_base64",
+            "line": 60,
+            "primitive_calls": 3000,
+            "self_seconds": 0.24280590000000002
+          },
+          {
+            "calls": 462000,
+            "cumulative_seconds": 0.23697900000000002,
+            "file": "httpx/_urlparse.py",
+            "function": "<genexpr>",
+            "line": 223,
+            "primitive_calls": 462000,
+            "self_seconds": 0.14723630000000001
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.21835670000000001,
+            "file": "httpx/_client.py",
+            "function": "_merge_headers",
+            "line": 424,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0122936
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.19889230000000002,
+            "file": "httpx/_models.py",
+            "function": "update",
+            "line": 274,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0170829
+          },
+          {
+            "calls": 66000,
+            "cumulative_seconds": 0.1896708,
+            "file": "httpx/_models.py",
+            "function": "__getitem__",
+            "line": 284,
+            "primitive_calls": 66000,
+            "self_seconds": 0.1002669
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.18555290000000002,
+            "file": "httpx/_models.py",
+            "function": "_prepare",
+            "line": 441,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0289891
+          },
+          {
+            "calls": 12000,
+            "cumulative_seconds": 0.1847389,
+            "file": "httpx/_models.py",
+            "function": "iter_raw",
+            "line": 935,
+            "primitive_calls": 12000,
+            "self_seconds": 0.033711000000000005
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.12068880000000001,
+            "file": "cremore/collectors/notion.py",
+            "function": "_json_ok",
+            "line": 99,
+            "primitive_calls": 6000,
+            "self_seconds": 0.006707
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.11174990000000001,
+            "file": "cremore/http_client.py",
+            "function": "json",
+            "line": 24,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0066265000000000004
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0366893,
+            "file": "cremore/http_client.py",
+            "function": "_check_content_length",
+            "line": 69,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0130515
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.01849,
+            "file": "cremore/collectors/notion.py",
+            "function": "_page_title",
+            "line": 246,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0085436
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0135052,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_utf16",
+            "line": 95,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0078758
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.012926700000000001,
+            "file": "cremore/collectors/notion.py",
+            "function": "append",
+            "line": 174,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0062494000000000004
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.012368200000000001,
+            "file": "cremore/detection/engine.py",
+            "function": "__init__",
+            "line": 47,
+            "primitive_calls": 3000,
+            "self_seconds": 0.012368200000000001
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0105336,
+            "file": "cremore/collectors/notion.py",
+            "function": "_block_text_runs",
+            "line": 227,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0066007
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0069109,
+            "file": "cremore/http_client.py",
+            "function": "__init__",
+            "line": 15,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0033312000000000003
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0067472,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_unicode_escape",
+            "line": 126,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0017744000000000002
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0056132000000000005,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_html_entities",
+            "line": 146,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0011514000000000001
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0042592,
+            "file": "cremore/collectors/base.py",
+            "function": "consume",
+            "line": 68,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0042592
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0040191,
+            "file": "cremore/collectors/notion.py",
+            "function": "_headers",
+            "line": 70,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0040191
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0029717000000000003,
+            "file": "cremore/collectors/notion.py",
+            "function": "<genexpr>",
+            "line": 256,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0021612000000000003
+          }
+        ],
+        "samples": [
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 2000,
+            "http_calls_by_kind": {
+              "block_body": 1000,
+              "page_header": 1000
+            },
+            "http_response_body_bytes": 4610000,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 3.8089086999825668
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 2000,
+            "http_calls_by_kind": {
+              "block_body": 1000,
+              "page_header": 1000
+            },
+            "http_response_body_bytes": 4610000,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 4.099675700010266
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 2000,
+            "http_calls_by_kind": {
+              "block_body": 1000,
+              "page_header": 1000
+            },
+            "http_response_body_bytes": 4610000,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 3.760509699990507
+          }
+        ],
+        "total_profiled_self_seconds": 11.657098000000001
+      },
+      "current": {
+        "functions": [
+          {
+            "calls": 3,
+            "cumulative_seconds": 13.5488891,
+            "file": "cremore/scanning/service.py",
+            "function": "run",
+            "line": 48,
+            "primitive_calls": 3,
+            "self_seconds": 0.07627210000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.4706135,
+            "file": "benchmark_github_notion_scan.py",
+            "function": "scan",
+            "line": 226,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0082463
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 8.461844600000001,
+            "file": "cremore/detection/engine.py",
+            "function": "scan",
+            "line": 177,
+            "primitive_calls": 3000,
+            "self_seconds": 0.6644769
+          },
+          {
+            "calls": 5163000,
+            "cumulative_seconds": 7.27461,
+            "file": "~",
+            "function": "<built-in method builtins.any>",
+            "line": 0,
+            "primitive_calls": 5163000,
+            "self_seconds": 1.5242623000000002
+          },
+          {
+            "calls": 111003,
+            "cumulative_seconds": 4.8088837,
+            "file": "~",
+            "function": "<built-in method builtins.next>",
+            "line": 0,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0495641
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 4.8060678,
+            "file": "cremore/collectors/notion.py",
+            "function": "collect",
+            "line": 130,
+            "primitive_calls": 3003,
+            "self_seconds": 0.051513500000000004
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 4.629580600000001,
+            "file": "cremore/collectors/notion.py",
+            "function": "_get",
+            "line": 107,
+            "primitive_calls": 9000,
+            "self_seconds": 0.027083000000000003
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 4.4303283,
+            "file": "cremore/http_client.py",
+            "function": "bounded_request",
+            "line": 33,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0331762
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 4.3812161000000005,
+            "file": "cremore/http_client.py",
+            "function": "_request_once",
+            "line": 89,
+            "primitive_calls": 9000,
+            "self_seconds": 0.07328130000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 4.0910571000000004,
+            "file": "cremore/detection/engine.py",
+            "function": "_redacted_lines",
+            "line": 241,
+            "primitive_calls": 3000,
+            "self_seconds": 0.6337593
+          },
+          {
+            "calls": 45000,
+            "cumulative_seconds": 3.5418559000000003,
+            "file": "contextlib.py",
+            "function": "__enter__",
+            "line": 132,
+            "primitive_calls": 36000,
+            "self_seconds": 0.0226026
+          },
+          {
+            "calls": 18000,
+            "cumulative_seconds": 3.5173612000000003,
+            "file": "httpx/_client.py",
+            "function": "stream",
+            "line": 827,
+            "primitive_calls": 18000,
+            "self_seconds": 0.027004900000000002
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.7381362,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 244,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.7381362
+          },
+          {
+            "calls": 5442000,
+            "cumulative_seconds": 2.6573106,
+            "file": "cremore/detection/engine.py",
+            "function": "<genexpr>",
+            "line": 195,
+            "primitive_calls": 5442000,
+            "self_seconds": 2.6573106
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 1.9203319,
+            "file": "httpx/_client.py",
+            "function": "build_request",
+            "line": 340,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0588969
+          },
+          {
+            "calls": 3003,
+            "cumulative_seconds": 1.6766405000000002,
+            "file": "cremore/collectors/notion.py",
+            "function": "_iter_pages",
+            "line": 182,
+            "primitive_calls": 3003,
+            "self_seconds": 0.0131459
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 1.6539927,
+            "file": "cremore/collectors/notion.py",
+            "function": "_page_data",
+            "line": 229,
+            "primitive_calls": 3000,
+            "self_seconds": 0.009945500000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 1.6440472000000002,
+            "file": "cremore/collectors/notion.py",
+            "function": "walk",
+            "line": 253,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0154982
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 1.5652508,
+            "file": "httpx/_client.py",
+            "function": "send",
+            "line": 879,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0221707
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 1.4946161,
+            "file": "httpx/_client.py",
+            "function": "_send_handling_auth",
+            "line": 930,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0183971
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 1.4388074000000002,
+            "file": "httpx/_client.py",
+            "function": "_send_handling_redirects",
+            "line": 964,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0173423
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 1.4136804,
+            "file": "httpx/_client.py",
+            "function": "_send_single_request",
+            "line": 1001,
+            "primitive_calls": 9000,
+            "self_seconds": 0.07835600000000001
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.9939857000000001,
+            "file": "httpx/_models.py",
+            "function": "extract_cookies",
+            "line": 1101,
+            "primitive_calls": 9000,
+            "self_seconds": 0.021877
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.9271873,
+            "file": "httpx/_client.py",
+            "function": "_merge_url",
+            "line": 391,
+            "primitive_calls": 9000,
+            "self_seconds": 0.013480800000000001
+          },
+          {
+            "calls": 18000,
+            "cumulative_seconds": 0.9260213,
+            "file": "httpx/_urls.py",
+            "function": "__init__",
+            "line": 77,
+            "primitive_calls": 18000,
+            "self_seconds": 0.031110600000000002
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.88485,
+            "file": "httpx/_urlparse.py",
+            "function": "urlparse",
+            "line": 213,
+            "primitive_calls": 9000,
+            "self_seconds": 0.1062473
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.7369555000000001,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 1249,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0526253
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.5310875,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 383,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0527395
+          },
+          {
+            "calls": 18000,
+            "cumulative_seconds": 0.42479940000000005,
+            "file": "httpx/_models.py",
+            "function": "iter_bytes",
+            "line": 884,
+            "primitive_calls": 18000,
+            "self_seconds": 0.060791000000000005
+          },
+          {
+            "calls": 45000,
+            "cumulative_seconds": 0.4039164,
+            "file": "httpx/_models.py",
+            "function": "__init__",
+            "line": 144,
+            "primitive_calls": 45000,
+            "self_seconds": 0.1635248
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.38359170000000004,
+            "file": "request.py",
+            "function": "__init__",
+            "line": 315,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0358457
+          },
+          {
+            "calls": 657000,
+            "cumulative_seconds": 0.3549009,
+            "file": "httpx/_urlparse.py",
+            "function": "<genexpr>",
+            "line": 223,
+            "primitive_calls": 657000,
+            "self_seconds": 0.22081620000000002
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.3522583,
+            "file": "httpx/_client.py",
+            "function": "_merge_headers",
+            "line": 424,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0170972
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.32475390000000004,
+            "file": "httpx/_models.py",
+            "function": "update",
+            "line": 274,
+            "primitive_calls": 9000,
+            "self_seconds": 0.025322400000000002
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.29510000000000003,
+            "file": "cremore/detection/decoders.py",
+            "function": "decoded_views",
+            "line": 169,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0143821
+          },
+          {
+            "calls": 99000,
+            "cumulative_seconds": 0.2878287,
+            "file": "httpx/_models.py",
+            "function": "__getitem__",
+            "line": 284,
+            "primitive_calls": 99000,
+            "self_seconds": 0.15152010000000002
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.2789148,
+            "file": "httpx/_models.py",
+            "function": "_prepare",
+            "line": 441,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0413569
+          },
+          {
+            "calls": 117006,
+            "cumulative_seconds": 0.2743027,
+            "file": "~",
+            "function": "<built-in method builtins.getattr>",
+            "line": 0,
+            "primitive_calls": 114006,
+            "self_seconds": 0.0361405
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.252309,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_base64",
+            "line": 60,
+            "primitive_calls": 3000,
+            "self_seconds": 0.2469465
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.1658607,
+            "file": "cremore/collectors/notion.py",
+            "function": "_json_ok",
+            "line": 119,
+            "primitive_calls": 9000,
+            "self_seconds": 0.010302700000000001
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.15311750000000002,
+            "file": "cremore/http_client.py",
+            "function": "json",
+            "line": 29,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0095884
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0775045,
+            "file": "cremore/db/scan_store.py",
+            "function": "stable_digest",
+            "line": 44,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0084115
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.056845200000000005,
+            "file": "cremore/scanning/orchestrator.py",
+            "function": "using",
+            "line": 87,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0047882
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.0548265,
+            "file": "cremore/http_client.py",
+            "function": "_check_content_length",
+            "line": 123,
+            "primitive_calls": 9000,
+            "self_seconds": 0.019476200000000003
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.026237600000000003,
+            "file": "cremore/scanning/orchestrator.py",
+            "function": "scan_resource",
+            "line": 149,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0162096
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.019743200000000002,
+            "file": "cremore/collectors/notion.py",
+            "function": "_page_title",
+            "line": 312,
+            "primitive_calls": 3000,
+            "self_seconds": 0.009201
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0188596,
+            "file": "cremore/collectors/notion.py",
+            "function": "_timestamp",
+            "line": 326,
+            "primitive_calls": 6000,
+            "self_seconds": 0.010767800000000001
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.014310400000000001,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_utf16",
+            "line": 95,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0085908
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.013774900000000001,
+            "file": "cremore/collectors/notion.py",
+            "function": "append",
+            "line": 234,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0065694
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0119267,
+            "file": "cremore/detection/engine.py",
+            "function": "__init__",
+            "line": 47,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0119267
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.0118241,
+            "file": "cremore/collectors/notion.py",
+            "function": "_request",
+            "line": 91,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0057610000000000005
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0103742,
+            "file": "cremore/collectors/notion.py",
+            "function": "_block_text_runs",
+            "line": 293,
+            "primitive_calls": 6000,
+            "self_seconds": 0.006682100000000001
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.009315,
+            "file": "cremore/http_client.py",
+            "function": "__init__",
+            "line": 20,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0049211
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0071105000000000005,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_unicode_escape",
+            "line": 126,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0019776
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.0063086,
+            "file": "cremore/collectors/notion.py",
+            "function": "_headers",
+            "line": 84,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0063086
+          },
+          {
+            "calls": 9000,
+            "cumulative_seconds": 0.0060631,
+            "file": "cremore/collectors/base.py",
+            "function": "consume",
+            "line": 68,
+            "primitive_calls": 9000,
+            "self_seconds": 0.0060631
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0056455,
+            "file": "cremore/detection/decoders.py",
+            "function": "decode_html_entities",
+            "line": 146,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0011034
+          },
+          {
+            "calls": 6000,
+            "cumulative_seconds": 0.0030419,
+            "file": "cremore/collectors/notion.py",
+            "function": "<genexpr>",
+            "line": 322,
+            "primitive_calls": 6000,
+            "self_seconds": 0.0022043
+          },
+          {
+            "calls": 3000,
+            "cumulative_seconds": 0.0006364000000000001,
+            "file": "cremore/collectors/base.py",
+            "function": "read",
+            "line": 28,
+            "primitive_calls": 3000,
+            "self_seconds": 0.0006364000000000001
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0000257,
+            "file": "cremore/db/scan_store.py",
+            "function": "__init__",
+            "line": 53,
+            "primitive_calls": 3,
+            "self_seconds": 0.000014200000000000001
+          },
+          {
+            "calls": 3,
+            "cumulative_seconds": 0.0000032000000000000003,
+            "file": "cremore/scanning/service.py",
+            "function": "<lambda>",
+            "line": 32,
+            "primitive_calls": 3,
+            "self_seconds": 0.0000032000000000000003
+          }
+        ],
+        "samples": [
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 3000,
+            "http_calls_by_kind": {
+              "block_body": 1000,
+              "page_header": 2000
+            },
+            "http_response_body_bytes": 4855000,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 4.517452300002333
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 3000,
+            "http_calls_by_kind": {
+              "block_body": 1000,
+              "page_header": 2000
+            },
+            "http_response_body_bytes": 4855000,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 4.279994100012118
+          },
+          {
+            "cache_reused": 0,
+            "engine_input_bytes": 4096000,
+            "engine_invocations": 1000,
+            "failures": 0,
+            "http_calls": 3000,
+            "http_calls_by_kind": {
+              "block_body": 1000,
+              "page_header": 2000
+            },
+            "http_response_body_bytes": 4855000,
+            "objects_processed": 1000,
+            "source_content_bytes_fetched": 4096000,
+            "unchanged_pages_skipped": 0,
+            "wall_seconds": 4.7516788999782875
+          }
+        ],
+        "total_profiled_self_seconds": 13.529981000000001
+      },
+      "dataset": {
+        "dataset_sha256": "603a03dd70d4bc3781ee8324ddefc701cdd147153c75760a9dbedeb3935f846f",
+        "source_bytes": 4096000
+      }
+    }
+  },
+  "scope": "ScanService.run only; shared current Engine/Orchestrator/memory repository",
+  "smoke_only": false
+}

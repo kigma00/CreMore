@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {"id": "soc_jsonl", "provider": "jsonl", "options": {}},
+    {
+      "id": "soc_splunk",
+      "provider": "splunk_hec",
+      "options": {
+        "endpoint": "https://splunk.internal.example:8088/services/collector/event",
+        "token_env": "SPLUNK_HEC_TOKEN"
+      }
+    },
+    {
+      "id": "soc_logscale",
+      "provider": "logscale",
+      "options": {
+        "endpoint": "https://logscale.internal.example/api/v1/ingest/humio-structured",
+        "token_env": "LOGSCALE_INGEST_TOKEN"
+      }
+    }
+  ]
+}

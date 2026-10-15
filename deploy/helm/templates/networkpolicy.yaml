@@ -1,0 +1,94 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cremore.fullname" . }}-default-deny
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: {{ include "cremore.fullname" . }} }
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cremore.fullname" . }}-web
+spec:
+  podSelector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels: {{ toYaml .Values.networkPolicy.ingressPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 4443
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "api") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 8080 }]
+    {{- if .Values.isolation.enabled }}
+    {{- include "cremore.isolatedEgress" (dict "root" . "component" "web") | nindent 4 }}
+    {{- else }}
+    {{- include "cremore.dnsEgress" . | nindent 4 }}
+    {{- include "cremore.httpsEgress" . | nindent 4 }}
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cremore.fullname" . }}-api
+spec:
+  podSelector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "web") | nindent 14 }}
+      ports: [{ protocol: TCP, port: 8080 }]
+  {{- if .Values.isolation.enabled }}
+  egress: {{ include "cremore.isolatedEgress" (dict "root" . "component" "api") | nindent 4 }}
+  {{- else }}
+  egress: {{ include "cremore.backendEgress" . | nindent 4 }}
+    {{- range .Values.contactDelivery.smtpEgress }}
+    - to: [{ ipBlock: { cidr: {{ .cidr | quote }} } }]
+      ports: [{ protocol: TCP, port: {{ .port | int }} }]
+    {{- end }}
+  {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cremore.fullname" . }}-worker
+spec:
+  podSelector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "worker") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  {{- if .Values.isolation.enabled }}
+  egress: {{ include "cremore.isolatedEgress" (dict "root" . "component" "worker") | nindent 4 }}
+  {{- else }}
+  egress: {{ include "cremore.backendEgress" . | nindent 4 }}
+    {{- range .Values.vaultConnections.egress }}
+    - to: [{ ipBlock: { cidr: {{ .cidr | quote }} } }]
+      ports: [{ protocol: TCP, port: {{ .port | int }} }]
+    {{- end }}
+  {{- end }}
+{{- if .Values.isolation.enabled }}
+{{- range $name := list "control" "remediator" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cremore.fullname" $ }}-{{ $name }}
+spec:
+  podSelector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" $ "component" $name) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  egress: {{ include "cremore.isolatedEgress" (dict "root" $ "component" $name) | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,12 @@
+# Add after docker-compose.yml and reverse-proxy/compose.public.yml.
+# Uses the EC2 instance role through IMDSv2, with no host CLI credential files.
+services:
+  api:
+    environment: &instance-role
+      AWS_PROFILE: ""
+      AWS_CONFIG_FILE: /dev/null
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_EC2_METADATA_DISABLED: "false"
+      AWS_SSO_DISCOVERY_MODE: disabled
+  worker:
+    environment: *instance-role

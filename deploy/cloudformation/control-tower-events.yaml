@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Optional dedicated CreMore lifecycle queue in the Control Tower management account and home region. An active CloudTrail trail is required. Deploy separately; CreMore itself only consumes events.
+Parameters:
+  ConsumerRoleArn:
+    Type: String
+    AllowedPattern: '^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$'
+    Description: Exact approved CreMore worker role. Its identity policy must also allow receive/delete on the output queue ARN.
+Resources:
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+  LifecycleQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      VisibilityTimeout: 60
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+  LifecycleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      State: ENABLED
+      EventPattern:
+        source: [aws.controltower]
+        account: [!Ref AWS::AccountId]
+        detail-type: [AWS Service Event via CloudTrail]
+        detail:
+          eventSource: [controltower.amazonaws.com]
+          eventType: [AwsServiceEvent]
+          eventName: [CreateManagedAccount, UpdateManagedAccount, RegisterOrganizationalUnit, DeregisterOrganizationalUnit, EnableBaseline, ResetEnabledBaseline, UpdateEnabledBaseline, DisableBaseline]
+      Targets:
+        - Id: CreMoreLifecycleQueue
+          Arn: !GetAtt LifecycleQueue.Arn
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref LifecycleQueue]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt LifecycleQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt LifecycleRule.Arn
+          - Effect: Allow
+            Principal:
+              AWS: !Ref ConsumerRoleArn
+            Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+            Resource: !GetAtt LifecycleQueue.Arn
+          - Effect: Deny
+            Principal: '*'
+            Action: sqs:*
+            Resource: !GetAtt LifecycleQueue.Arn
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+Outputs:
+  QueueUrl:
+    Value: !Ref LifecycleQueue
+  QueueArn:
+    Value: !GetAtt LifecycleQueue.Arn
+  DeadLetterQueueArn:
+    Value: !GetAtt DeadLetterQueue.Arn

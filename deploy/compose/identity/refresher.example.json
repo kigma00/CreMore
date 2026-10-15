@@ -1,0 +1,19 @@
+{
+  "directory": "/run/cremore-identity/cloud",
+  "tokens": [
+    {
+      "name": "aws",
+      "token_url": "https://example.okta.com/oauth2/aus0000000000000000/v1/token",
+      "client_id": "0oa0000000000000000",
+      "client_secret_env": "IDP_CLIENT_SECRET",
+      "scope": "cremore.workload"
+    },
+    {
+      "name": "vault-pay",
+      "directory": "/run/cremore-identity/vault",
+      "token_url": "https://keycloak.internal.example/realms/workloads/protocol/openid-connect/token",
+      "client_id": "cremore-vault",
+      "client_secret_env": "IDP_CLIENT_SECRET"
+    }
+  ]
+}

@@ -1,0 +1,443 @@
+{
+  "revoke": {
+    "gitlab": {
+      "title": [
+        "GitLab에서 토큰 폐기 후 재발급",
+        "Revoke and reissue the token in GitLab"
+      ],
+      "link": [
+        "GitLab 액세스 토큰 화면",
+        "GitLab access tokens",
+        "https://gitlab.com/-/user_settings/personal_access_tokens"
+      ],
+      "steps": [
+        [
+          "GitLab 오른쪽 위 아바타에서 <b>환경 설정 → 액세스 토큰</b>으로 이동합니다. 프로젝트·그룹 토큰은 <b>설정 → 액세스 토큰</b>에 있습니다.",
+          "From your avatar in GitLab, open <b>Preferences → Access tokens</b>. Project and group tokens are under <b>Settings → Access tokens</b>."
+        ],
+        [
+          "목록에서 <b>{name}</b>을 찾아 <b>폐기(Revoke)</b>를 누릅니다.",
+          "Find <b>{name}</b> in the list and click <b>Revoke</b>."
+        ],
+        [
+          "같은 작업이 필요하면 <b>필요한 scope만</b> 고르고 <b>만료일</b>을 정해 새 토큰을 발급합니다.",
+          "If the job still needs a token, issue a new one with <b>only the scopes it needs</b> and an <b>expiry date</b>."
+        ],
+        [
+          "새 토큰은 Vault에 넣고, CI에서는 <b>Masked·Protected 변수</b>로만 참조합니다.",
+          "Store the new token in Vault and reference it in CI only as a <b>masked, protected variable</b>."
+        ],
+        [
+          "CreMore에서 <b>다시 검사</b>를 실행해 폐기가 반영됐는지 확인합니다.",
+          "Run <b>Rescan</b> in CreMore to confirm the revocation."
+        ]
+      ]
+    },
+    "github": {
+      "title": [
+        "GitHub에서 토큰 삭제 후 재발급",
+        "Delete and reissue the token in GitHub"
+      ],
+      "link": [
+        "GitHub 토큰 설정",
+        "GitHub token settings",
+        "https://github.com/settings/tokens"
+      ],
+      "steps": [
+        [
+          "토큰을 만든 계정으로 로그인해 <b>Settings → Developer settings → Personal access tokens</b>로 이동합니다.",
+          "Sign in as the account that created the token and open <b>Settings → Developer settings → Personal access tokens</b>."
+        ],
+        [
+          "<b>{name}</b>을 찾아 <b>Delete</b>를 누릅니다. 조직이 승인한 토큰은 조직 관리자도 회수할 수 있습니다.",
+          "Find <b>{name}</b> and click <b>Delete</b>. Org owners can also revoke tokens the org approved."
+        ],
+        [
+          "다시 필요하면 <b>세분화 PAT(fine-grained)</b>로 저장소와 권한을 좁혀 발급합니다.",
+          "If it is still needed, issue a <b>fine-grained PAT</b> limited to specific repositories and permissions."
+        ],
+        [
+          "배포 자동화라면 개인 토큰 대신 <b>GitHub App</b>으로 옮기는 것을 검토합니다.",
+          "For deployment automation, consider moving from a personal token to a <b>GitHub App</b>."
+        ],
+        [
+          "CreMore에서 <b>다시 검사</b>로 폐기를 확인합니다.",
+          "Run <b>Rescan</b> in CreMore to confirm the revocation."
+        ]
+      ]
+    },
+    "aws": {
+      "title": [
+        "IAM 액세스 키 비활성화 후 삭제",
+        "Deactivate, then delete the IAM access key"
+      ],
+      "link": [
+        "AWS IAM 사용자 콘솔",
+        "AWS IAM users console",
+        "https://console.aws.amazon.com/iam/home#/users"
+      ],
+      "steps": [
+        [
+          "IAM 콘솔에서 <b>사용자 → {issuer} → 보안 자격 증명</b>으로 이동합니다.",
+          "In the IAM console, open <b>Users → {issuer} → Security credentials</b>."
+        ],
+        [
+          "해당 액세스 키를 먼저 <b>비활성화</b>합니다. 바로 삭제하지 않고 영향이 없는지 하루 정도 확인합니다.",
+          "<b>Deactivate</b> the key first. Wait about a day to confirm nothing breaks before deleting it."
+        ],
+        [
+          "CloudTrail에서 이 키를 쓴 요청이 있는지 확인한 뒤 <b>삭제</b>합니다.",
+          "Check CloudTrail for requests made with the key, then <b>delete</b> it."
+        ],
+        [
+          "장기 키 대신 <b>IAM 역할</b>이나 Identity Center 임시 자격 증명으로 옮깁니다.",
+          "Replace long-lived keys with an <b>IAM role</b> or Identity Center temporary credentials."
+        ],
+        [
+          "CreMore Vault 대조에서 옛 값이 남아 있지 않은지 확인합니다.",
+          "Confirm in CreMore Vault matching that the old value is gone."
+        ]
+      ]
+    },
+    "slack": {
+      "title": [
+        "Slack 앱 토큰 재발급",
+        "Reissue the Slack app token"
+      ],
+      "link": [
+        "Slack 앱 관리",
+        "Slack app management",
+        "https://api.slack.com/apps"
+      ],
+      "steps": [
+        [
+          "<b>api.slack.com/apps</b>에서 <b>{issuer}</b>을 엽니다.",
+          "Open <b>{issuer}</b> at <b>api.slack.com/apps</b>."
+        ],
+        [
+          "봇 토큰은 <b>OAuth & Permissions</b>에서 재발급하거나 앱을 다시 설치해 교체합니다. 웹훅은 <b>Incoming Webhooks</b>에서 해당 URL을 지우고 새로 만듭니다.",
+          "Rotate a bot token under <b>OAuth & Permissions</b> or by reinstalling the app. For a webhook, delete the URL under <b>Incoming Webhooks</b> and create a new one."
+        ],
+        [
+          "이전 토큰이 더 이상 동작하지 않는지 확인합니다.",
+          "Confirm the old token no longer works."
+        ],
+        [
+          "새 값은 Vault에 넣고 코드에는 참조만 남깁니다.",
+          "Store the new value in Vault and keep only a reference in code."
+        ]
+      ]
+    },
+    "notion": {
+      "title": [
+        "Notion 연결 API 토큰 재발급",
+        "Refresh the Notion connection's API token"
+      ],
+      "link": [
+        "Notion 연결 관리",
+        "Notion connections",
+        "https://www.notion.so/profile/integrations"
+      ],
+      "steps": [
+        [
+          "워크스페이스 소유자 계정으로 Notion 개발자 포털에서 <b>{issuer}</b> 연결(이전 이름: 내부 통합)을 엽니다.",
+          "As a workspace owner, open the <b>{issuer}</b> connection (formerly internal integration) in Notion's developer portal."
+        ],
+        [
+          "<b>Configuration</b> 탭에서 <b>API 토큰</b>을 <b>재발급</b>합니다. 이전 값은 바로 무효가 됩니다.",
+          "On its <b>Configuration</b> tab, <b>refresh</b> the <b>API token</b>. The old value stops working immediately."
+        ],
+        [
+          "연결을 쓰는 자동화에 새 값을 넣고 동작을 확인합니다.",
+          "Update the automations that use it and confirm they still work."
+        ],
+        [
+          "연결에 공유된 페이지가 꼭 필요한 것만 남았는지 확인합니다.",
+          "Check that only the pages it really needs are shared with the connection."
+        ]
+      ]
+    },
+    "sendgrid": {
+      "title": [
+        "SendGrid API 키 삭제",
+        "Delete the SendGrid API key"
+      ],
+      "link": [
+        "SendGrid API 키 관리",
+        "SendGrid API keys",
+        "https://app.sendgrid.com/settings/api_keys"
+      ],
+      "steps": [
+        [
+          "관리자에게 <b>Settings › API Keys</b> 화면에서 <b>{hint}</b>에 해당하는 키를 찾아 달라고 요청합니다.",
+          "Ask an admin to find the key matching <b>{hint}</b> under <b>Settings › API Keys</b>."
+        ],
+        [
+          "해당 키를 <b>Delete</b>합니다.",
+          "<b>Delete</b> that key."
+        ],
+        [
+          "다시 필요하면 <b>Mail Send</b>처럼 꼭 필요한 권한만 준 <b>Restricted Access</b> 키로 발급합니다.",
+          "If still needed, issue a <b>Restricted Access</b> key with only what it needs, such as <b>Mail Send</b>."
+        ],
+        [
+          "키를 쓰던 스크립트에서 값을 지우고 환경 변수나 Vault로 옮깁니다.",
+          "Remove the value from scripts and load it from an environment variable or Vault."
+        ]
+      ]
+    },
+    "stripe": {
+      "title": [
+        "Stripe 시크릿 키 교체(Roll)",
+        "Roll the Stripe secret key"
+      ],
+      "link": [
+        "Stripe API 키",
+        "Stripe API keys",
+        "https://dashboard.stripe.com/apikeys"
+      ],
+      "steps": [
+        [
+          "<b>Developers → API keys</b>에서 해당 시크릿 키의 <b>Roll key</b>를 누릅니다.",
+          "Under <b>Developers → API keys</b>, click <b>Roll key</b> on the secret key."
+        ],
+        [
+          "이전 키 만료 시점을 <b>즉시</b>로 정합니다. 노출된 키는 유예 기간을 두지 않습니다.",
+          "Set the old key to expire <b>now</b>. Exposed keys get no grace period."
+        ],
+        [
+          "키를 쓰는 서비스에 새 키를 배포하고 결제 요청이 정상인지 확인합니다.",
+          "Deploy the new key to the services that use it and confirm payments still succeed."
+        ]
+      ]
+    },
+    "gcp": {
+      "title": [
+        "서비스 계정 키 삭제",
+        "Delete the service account key"
+      ],
+      "link": [
+        "GCP 서비스 계정",
+        "GCP service accounts",
+        "https://console.cloud.google.com/iam-admin/serviceaccounts"
+      ],
+      "steps": [
+        [
+          "<b>IAM 및 관리자 → 서비스 계정 → {issuer} → 키</b>로 이동합니다.",
+          "Open <b>IAM & Admin → Service accounts → {issuer} → Keys</b>."
+        ],
+        [
+          "노출된 키 ID를 찾아 <b>삭제</b>합니다.",
+          "Find the exposed key ID and <b>delete</b> it."
+        ],
+        [
+          "가능하면 키 파일 대신 <b>워크로드 아이덴티티 제휴</b>로 옮깁니다.",
+          "Where possible, replace key files with <b>Workload Identity Federation</b>."
+        ]
+      ]
+    },
+    "atlassian": {
+      "title": [
+        "Atlassian API 토큰 폐기",
+        "Revoke the Atlassian API token"
+      ],
+      "link": [
+        "Atlassian API 토큰",
+        "Atlassian API tokens",
+        "https://id.atlassian.com/manage-profile/security/api-tokens"
+      ],
+      "steps": [
+        [
+          "토큰을 만든 계정으로 <b>보안 → API 토큰</b>에 들어갑니다.",
+          "As the account that created it, open <b>Security → API tokens</b>."
+        ],
+        [
+          "<b>{name}</b>을 <b>폐기</b>하고 필요하면 만료일을 정해 다시 만듭니다.",
+          "<b>Revoke</b> <b>{name}</b> and, if needed, create a new one with an expiry date."
+        ]
+      ]
+    },
+    "bitbucket": {
+      "title": [
+        "Bitbucket 액세스 토큰 폐기",
+        "Revoke the Bitbucket access token"
+      ],
+      "link": [
+        "Bitbucket 개인 설정",
+        "Bitbucket personal settings",
+        "https://bitbucket.org/account/settings/"
+      ],
+      "steps": [
+        [
+          "토큰이 속한 저장소·프로젝트·워크스페이스의 <b>설정 → 액세스 토큰</b>으로 이동합니다.",
+          "Open <b>Settings → Access tokens</b> of the repository, project or workspace the token belongs to."
+        ],
+        [
+          "<b>{name}</b>을 <b>폐기(Revoke)</b>합니다.",
+          "<b>Revoke</b> <b>{name}</b>."
+        ],
+        [
+          "다시 필요하면 필요한 권한만 주고 만료일을 정해 새로 만듭니다.",
+          "If still needed, create a new one with only the permissions it needs and an expiry date."
+        ]
+      ]
+    },
+    "azure": {
+      "title": [
+        "Azure 자격 증명 폐기 후 교체",
+        "Revoke and replace the Azure credential"
+      ],
+      "link": [
+        "Azure 포털",
+        "Azure portal",
+        "https://portal.azure.com/"
+      ],
+      "steps": [
+        [
+          "클라이언트 시크릿은 <b>Microsoft Entra ID → 앱 등록 → {issuer} → 인증서 및 비밀</b>에서 삭제합니다.",
+          "Delete a client secret under <b>Microsoft Entra ID → App registrations → {issuer} → Certificates & secrets</b>."
+        ],
+        [
+          "스토리지 계정 키는 <b>스토리지 계정 → 액세스 키</b>에서 <b>키 순환</b>을 실행합니다. SAS는 서명한 키를 순환하면 무효가 됩니다.",
+          "Rotate a storage account key under <b>Storage account → Access keys</b>. Rotating the signing key invalidates its SAS tokens."
+        ],
+        [
+          "새 값은 Key Vault에 넣고 애플리케이션은 관리 ID로 읽게 합니다.",
+          "Store the new value in Key Vault and let applications read it with a managed identity."
+        ]
+      ]
+    },
+    "azure_devops": {
+      "title": [
+        "Azure DevOps PAT 폐기",
+        "Revoke the Azure DevOps PAT"
+      ],
+      "link": [
+        "Azure DevOps",
+        "Azure DevOps",
+        "https://dev.azure.com/"
+      ],
+      "steps": [
+        [
+          "토큰을 만든 사용자 설정의 <b>Personal access tokens</b>로 이동합니다. 조직 관리자는 <b>조직 설정 → 정책</b>에서 회수할 수 있습니다.",
+          "Open <b>Personal access tokens</b> in the creator's user settings. Organization admins can revoke it under <b>Organization settings → Policies</b>."
+        ],
+        [
+          "<b>{name}</b>을 <b>Revoke</b>합니다.",
+          "<b>Revoke</b> <b>{name}</b>."
+        ],
+        [
+          "다시 필요하면 범위를 좁히고 짧은 만료일로 발급합니다.",
+          "If still needed, reissue it with narrower scopes and a short expiry."
+        ]
+      ]
+    }
+  },
+  "generic": {
+    "title": [
+      "발급 서비스에서 폐기 후 재발급",
+      "Revoke and reissue it at the issuer"
+    ],
+    "link": null,
+    "steps": [
+      [
+        "<b>{name}</b>을 발급한 서비스의 관리 화면에서 해당 값을 <b>폐기</b>하거나 비밀번호를 바꿉니다.",
+        "In the issuing service's admin console, <b>revoke</b> <b>{name}</b> or change its password."
+      ],
+      [
+        "값을 쓰던 서비스 설정을 Vault 참조로 바꾼 뒤 새 값을 배포합니다.",
+        "Point the services that use it at a Vault reference, then roll out the new value."
+      ],
+      [
+        "이전 값이 더 이상 동작하지 않는지 확인합니다.",
+        "Confirm the old value no longer works."
+      ]
+    ]
+  },
+  "cleanup": {
+    "web": [
+      [
+        "페이지·스크립트에서 값을 지우고 서버에서만 쓰도록 옮긴 뒤 다시 배포합니다.",
+        "Remove the value from the page or script, use it on the server side only, and redeploy."
+      ],
+      [
+        "운영 빌드는 <b>소스맵</b>을 공개하지 않게 하고(<code>sourceMappingURL</code> 제거 또는 비공개 배포) CDN 캐시를 비웁니다.",
+        "Stop serving <b>source maps</b> from production builds (drop <code>sourceMappingURL</code> or deploy them privately) and purge CDN caches."
+      ],
+      [
+        "웹 보관소·검색 엔진에 남은 사본은 지울 수 없으므로 <b>폐기가 먼저</b>입니다.",
+        "Copies in web archives and search engines cannot be removed, so <b>revoke first</b>."
+      ]
+    ],
+    "git": [
+      [
+        "파일에서 값을 지우고 <b>환경 변수나 Vault 참조</b>로 바꿉니다.",
+        "Remove the value from the file and use an <b>environment variable or Vault reference</b>."
+      ],
+      [
+        "이력에서도 지우려면 <code>git filter-repo --replace-text</code>로 이력을 다시 쓰고 강제 push합니다.",
+        "To remove it from history too, rewrite history with <code>git filter-repo --replace-text</code> and force-push."
+      ],
+      [
+        "포크·복제본을 가진 사람에게 새로 받으라고 알립니다. 이력 정리만으로는 이미 복사된 값을 막지 못하므로 <b>폐기가 먼저</b>입니다.",
+        "Tell anyone with a fork or clone to re-clone. Cleaning history can't stop copies already made, so <b>revoke first</b>."
+      ]
+    ],
+    "doc": [
+      [
+        "페이지에서 값을 지우고 Vault 위치를 대신 적습니다.",
+        "Delete the value from the page and note the Vault path instead."
+      ],
+      [
+        "<b>페이지 기록</b>에 이전 버전이 남아 있으니 기록도 확인합니다.",
+        "Earlier versions stay in <b>page history</b>, so check that too."
+      ],
+      [
+        "페이지 공유 범위를 필요한 사람으로 줄입니다.",
+        "Limit page sharing to the people who need it."
+      ]
+    ],
+    "bucket": [
+      [
+        "해당 객체를 삭제합니다.",
+        "Delete the object."
+      ],
+      [
+        "버전 관리가 켜져 있으면 <b>이전 버전</b>도 삭제합니다.",
+        "If versioning is on, delete <b>earlier versions</b> too."
+      ],
+      [
+        "버킷 접근 정책과 공개 설정을 확인합니다.",
+        "Review the bucket's access policy and public settings."
+      ]
+    ]
+  },
+  "vault": [
+    [
+      "새로 발급한 값을 <b>HashiCorp Vault</b>(<code>secret/…</code>)나 <b>AWS Secrets Manager</b>에 저장합니다.",
+      "Store the newly issued value in <b>HashiCorp Vault</b> (<code>secret/…</code>) or <b>AWS Secrets Manager</b>."
+    ],
+    [
+      "애플리케이션·CI에는 Vault 경로만 남기고 값은 넣지 않습니다.",
+      "Give applications and CI only the Vault path, never the value."
+    ],
+    [
+      "CreMore <b>Vault 보관 대조</b>에서 '보관 확인'으로 바뀌는지 확인합니다.",
+      "Confirm CreMore <b>Vault matching</b> now shows it as stored."
+    ]
+  ],
+  "scope": [
+    [
+      "실제로 쓰는 작업만 남기고 권한을 줄입니다. 예: GitLab은 <code>read_api</code>, GitHub은 세분화 PAT로 저장소 지정.",
+      "Keep only the permissions in real use. For example, <code>read_api</code> on GitLab, or a fine-grained PAT scoped to named repositories on GitHub."
+    ],
+    [
+      "만료일을 <b>30~90일</b>로 정하고 교체 일정을 팀 달력에 넣습니다.",
+      "Set an expiry of <b>30–90 days</b> and put the rotation date on the team calendar."
+    ],
+    [
+      "CreMore <b>점검 항목</b>에서 '만료일 없음'이 줄었는지 확인합니다.",
+      "Check that 'No expiry date' went down in CreMore <b>Risk checks</b>."
+    ]
+  ]
+}

@@ -1,0 +1,16 @@
+# TLS termination and reverse proxy for the external-exposure overlay.
+#
+# Caddy fetches and renews a real certificate for PUBLIC_HOST over ACME on the
+# first request. Point PUBLIC_HOST's DNS at this host and open 80/443 first.
+#
+# No public DNS yet (LAN / testing)? Replace the site block with:
+#     {$PUBLIC_HOST} {
+#         tls internal
+#         reverse_proxy oauth2-proxy:4180
+#     }
+# and trust Caddy's local CA on your client.
+
+{$PUBLIC_HOST} {
+	encode zstd gzip
+	reverse_proxy oauth2-proxy:4180
+}

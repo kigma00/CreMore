@@ -1,0 +1,16 @@
+# GCP through Workload Identity Federation with your IdP. Add after refresher.yml.
+# GCP_WIF_CONFIG is the credential configuration made by
+#   gcloud iam workload-identity-pools create-cred-config <provider> --service-account=<email> \
+#     --credential-source-file=/run/cremore-identity/cloud/gcp --output-file=wif.json
+# Only the worker collects from GCP, as with gcp.yml.
+services:
+  worker:
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/gcp/wif.json
+      GOOGLE_CLOUD_QUOTA_PROJECT: ${GCP_QUOTA_PROJECT:-}
+    volumes:
+      - type: bind
+        source: ${GCP_WIF_CONFIG:?set GCP_WIF_CONFIG to the credential configuration file}
+        target: /run/gcp/wif.json
+        read_only: true
+        bind: {create_host_path: false}

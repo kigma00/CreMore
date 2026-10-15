@@ -1,0 +1,133 @@
+{{- if .Values.siem.enabled }}
+{{- $name := printf "%s-siem" (include "cremore.fullname" .) }}
+{{- $config := .Values.siem.config | toJson }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels: {{ include "cremore.labels" (dict "root" . "component" "siem") | nindent 4 }}
+data:
+  # Destinations only; tokens arrive as environment variables named by token_env.
+  siem.json: {{ $config | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{ include "cremore.labels" (dict "root" . "component" "siem") | nindent 4 }}
+spec:
+  replicas: {{ .Values.siem.replicas }}
+  selector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "siem") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{ include "cremore.selectorLabels" (dict "root" . "component" "siem") | nindent 8 }}
+      annotations:
+        # A changed destination list restarts the exporter, which reads it at start.
+        checksum/config: {{ $config | sha256sum }}
+    spec:
+      {{- if .Values.isolation.enabled }}
+      serviceAccountName: {{ include "cremore.serviceAccountName" (dict "root" . "component" "siem") }}
+      {{- with .Values.isolation.nodeSelectors.siem }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: siem
+          image: {{ .Values.siem.image | default .Values.image.worker | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["cremore-siem", "--config", "/run/cremore-siem/siem.json"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          env:
+            - { name: ISOLATED_DEPLOYMENT, value: {{ .Values.isolation.enabled | quote }} }
+            - name: SIEM_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ .Values.siem.databaseUrlSecret.name | quote }}, key: {{ .Values.siem.databaseUrlSecret.key | quote }} } }
+            - { name: SIEM_HEARTBEAT_FILE, value: /tmp/cremore-siem.heartbeat }
+            {{- if .Values.databaseTLS.caSecretName }}
+            - { name: PGSSLROOTCERT, value: /run/db-ca/ca.crt }
+            {{- end }}
+          {{- with .Values.siem.tokenSecretName }}
+          envFrom:
+            - secretRef: { name: {{ . | quote }} }
+          {{- end }}
+          volumeMounts:
+            - { name: runtime-tmp, mountPath: /tmp }
+            - { name: config, mountPath: /run/cremore-siem, readOnly: true }
+            {{- if .Values.databaseTLS.caSecretName }}
+            - { name: database-ca, mountPath: /run/db-ca, readOnly: true }
+            {{- end }}
+            {{- if .Values.siem.tlsSecretName }}
+            - { name: destination-tls, mountPath: /etc/cremore-siem, readOnly: true }
+            {{- end }}
+          {{- /* The exporter has no HTTP port: it touches this file after every pass.
+                 A pass sends at most batch_size events per destination, each bounded by
+                 its timeout, so fifteen quiet minutes means it is stuck, not slow. */}}
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os,sys,time;p='/tmp/cremore-siem.heartbeat';sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<900 else 1)"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources: {{ toYaml .Values.siem.resources | nindent 12 }}
+      volumes:
+        - name: runtime-tmp
+          emptyDir: { {{ if .Values.isolation.enabled }}medium: Memory, {{ end }}sizeLimit: 16Mi }
+        - name: config
+          configMap: { name: {{ $name }}, defaultMode: 0440 }
+        {{- if .Values.databaseTLS.caSecretName }}
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.databaseTLS.caSecretName }}
+            defaultMode: 0440
+            items:
+              - { key: {{ .Values.databaseTLS.caSecretKey }}, path: ca.crt }
+        {{- end }}
+        {{- with .Values.siem.tlsSecretName }}
+        - name: destination-tls
+          secret: { secretName: {{ . | quote }}, defaultMode: 0440 }
+        {{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+spec:
+  podSelector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" . "component" "siem") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  {{- if .Values.isolation.enabled }}
+  egress: {{ include "cremore.isolatedEgress" (dict "root" . "component" "siem") | nindent 4 }}
+  {{- else }}
+  egress:
+    {{- include "cremore.dnsEgress" . | nindent 4 }}
+    - to: [{ ipBlock: { cidr: {{ .Values.networkPolicy.databaseCIDR | quote }} } }]
+      ports: [{ protocol: TCP, port: {{ .Values.networkPolicy.databasePort | int }} }]
+    - to:
+        {{- if .Values.networkPolicy.httpsEgressCIDRs }}
+        {{- range .Values.networkPolicy.httpsEgressCIDRs }}
+        - ipBlock: { cidr: {{ . | quote }} }
+        {{- end }}
+        {{- else }}
+        - ipBlock: { cidr: {{ .Values.networkPolicy.httpsCIDR | quote }} }
+        {{- end }}
+      ports:
+        {{- range .Values.siem.egressPorts }}
+        - { protocol: TCP, port: {{ . | int }} }
+        {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

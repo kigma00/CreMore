@@ -1,0 +1,350 @@
+# Standalone deployment: never merge with docker-compose.yml or identity overlays.
+# Read README.md and NETWORK_CONTRACT.md before provisioning the external networks.
+name: cremore-isolated
+
+x-hardened: &hardened
+  user: "65532:65532"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  init: true
+  restart: unless-stopped
+  pids_limit: 256
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777
+  logging:
+    driver: local
+    options: {max-size: "10m", max-file: "3"}
+
+x-python: &python
+  <<: *hardened
+  image: "${CREMORE_PYTHON_REPOSITORY:?set the reviewed Python repository}@sha256:${CREMORE_PYTHON_SHA256:?set the reviewed Python digest}"
+  dns: ["${CREMORE_DNS_SERVER:?set the constrained resolver IP}"]
+
+x-platform-env: &platform-env
+  ISOLATED_DEPLOYMENT: "true"
+  FINGERPRINT_KEY: ${FINGERPRINT_KEY:?set the stable installation fingerprint key}
+  AUDIT_CHAIN_KEY: ${AUDIT_CHAIN_KEY:?set the stable dedicated audit key}
+  SEALING_PUBLIC_KEYS_FILE: /run/cremore/recipients.json
+  AWS_EC2_METADATA_DISABLED: "true"
+  AWS_SSO_DISCOVERY_MODE: disabled
+  API_TOKEN: ""
+  # Workers need the same public sign-in context for IdP checks/group sync.
+  AUTH_MODE: oidc
+  OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:?set the HTTPS OIDC issuer}
+  OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+  OIDC_AUDIENCE: ${OIDC_AUDIENCE:?set the API token audience}
+  OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+  OIDC_VIEWER_GROUP: ${OIDC_VIEWER_GROUP:-}
+  OIDC_ANALYST_GROUP: ${OIDC_ANALYST_GROUP:-}
+  OIDC_REMEDIATOR_GROUP: ${OIDC_REMEDIATOR_GROUP:-}
+  OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:?set the administrator group}
+  # Installed ticket-system plugins an admin may choose (comma-separated ids, e.g. jira); empty offers none.
+  TICKET_SYSTEM_PLUGINS: ${TICKET_SYSTEM_PLUGINS:-}
+
+x-recipients: &recipients
+  type: bind
+  source: ${SEALING_PUBLIC_KEYS_PATH:?set the absolute public recipient policy path}
+  target: /run/cremore/recipients.json
+  read_only: true
+  bind: {create_host_path: false}
+
+x-approval-public: &approval-public
+  type: bind
+  source: ${REMEDIATION_APPROVAL_PUBLIC_KEY_PATH:?set the absolute Ed25519 public verification key path}
+  target: /run/cremore/approval-public.pem
+  read_only: true
+  bind: {create_host_path: false}
+
+x-database-ca: &database-ca
+  type: bind
+  source: ${DATABASE_CA_PATH:?set the absolute PostgreSQL CA bundle path}
+  target: /run/cremore/database-ca.pem
+  read_only: true
+  bind: {create_host_path: false}
+
+x-worker-health: &worker-health
+  test: [CMD, python, -c, "import os,time; assert time.time()-os.stat('/tmp/cremore-worker.heartbeat').st_mtime < 180"]
+  interval: 30s
+  timeout: 5s
+  start_period: 60s
+  retries: 3
+
+services:
+  api:
+    <<: *python
+    command: [cremore-api]
+    environment:
+      <<: *platform-env
+      DATABASE_URL: ${API_DATABASE_URL:?set the distinct API database login}
+      CONTROL_SEALING_KEY: ${CONTROL_SEALING_KEY:?set the API and control sealing key}
+      REMEDIATION_APPROVAL_PUBLIC_KEY_FILE: /run/cremore/approval-public.pem
+      API_BIND: 0.0.0.0:8080
+    volumes: [*recipients, *approval-public, *database-ca]
+    networks: [web-api, api-egress]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  collector:
+    <<: *python
+    command: [cremore-worker]
+    # Each task runner counts about 16 tasks (its threads, read-ahead pool and
+    # document parser): 1024 holds 32 runners beside the control loop.
+    pids_limit: 1024
+    # A stop waits for the current control tick, then ends the runners (about 11 s): Docker's default 10 s would
+    # kill them mid-task and leave their tasks to wait out the lease.
+    stop_grace_period: 30s
+    environment:
+      <<: *platform-env
+      WORKER_EXECUTION_ROLE: collector
+      WORKER_HEARTBEAT_FILE: /tmp/cremore-worker.heartbeat
+      # Task-runner processes (1-32); 0 picks min(4, usable CPUs).
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-0}
+      DATABASE_URL: ${COLLECTOR_DATABASE_URL:?set the distinct collector database login}
+      SEALING_PRIVATE_KEYS_FILE: /run/cremore/collector-private.json
+      AWS_CONFIG_FILE: /run/cloud-identity/aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_ROLE_ARN: ${COLLECTOR_AWS_ROLE_ARN:-}
+      AWS_WEB_IDENTITY_TOKEN_FILE: ${COLLECTOR_AWS_WEB_IDENTITY_TOKEN_FILE:-}
+      AWS_ROLES_ANYWHERE_CONFIG: ${COLLECTOR_AWS_ROLES_ANYWHERE_CONFIG:-}
+      AWS_DEFAULT_REGION: ${COLLECTOR_AWS_REGION:-ap-northeast-2}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/cloud-identity/gcp/adc.json
+      GOOGLE_CLOUD_QUOTA_PROJECT: ${COLLECTOR_GCP_QUOTA_PROJECT:-}
+      AZURE_CLIENT_ID: ${COLLECTOR_AZURE_CLIENT_ID:-}
+      AZURE_TENANT_ID: ${COLLECTOR_AZURE_TENANT_ID:-}
+      AZURE_FEDERATED_TOKEN_FILE: /run/cloud-identity/azure/token
+      AZURE_AUTHORITY_HOST: ${COLLECTOR_AZURE_AUTHORITY_HOST:-https://login.microsoftonline.com/}
+      VAULT_CONNECTION_TOKEN_DIR: /run/cloud-identity/vault
+    volumes:
+      - *recipients
+      - *database-ca
+      - type: bind
+        source: ${COLLECTOR_PRIVATE_KEYS_PATH:?set the absolute collector private keyring path}
+        target: /run/cremore/collector-private.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${COLLECTOR_CLOUD_IDENTITY_DIR:?set the separate collector identity directory}
+        target: /run/cloud-identity
+        read_only: true
+        bind: {create_host_path: false}
+    networks: [collector-egress]
+    healthcheck: *worker-health
+
+  remediator:
+    <<: *python
+    command: [cremore-worker]
+    environment:
+      <<: *platform-env
+      WORKER_EXECUTION_ROLE: remediator
+      WORKER_HEARTBEAT_FILE: /tmp/cremore-worker.heartbeat
+      DATABASE_URL: ${REMEDIATOR_DATABASE_URL:?set the distinct remediator database login}
+      SEALING_PRIVATE_KEYS_FILE: /run/cremore/remediator-private.json
+      REMEDIATION_APPROVAL_PUBLIC_KEY_FILE: /run/cremore/approval-public.pem
+      AWS_CONFIG_FILE: /run/cloud-identity/aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_ROLE_ARN: ${REMEDIATOR_AWS_ROLE_ARN:-}
+      AWS_WEB_IDENTITY_TOKEN_FILE: ${REMEDIATOR_AWS_WEB_IDENTITY_TOKEN_FILE:-}
+      AWS_ROLES_ANYWHERE_CONFIG: ${REMEDIATOR_AWS_ROLES_ANYWHERE_CONFIG:-}
+      AWS_DEFAULT_REGION: ${REMEDIATOR_AWS_REGION:-ap-northeast-2}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/cloud-identity/gcp/adc.json
+      GOOGLE_CLOUD_QUOTA_PROJECT: ${REMEDIATOR_GCP_QUOTA_PROJECT:-}
+      AZURE_CLIENT_ID: ${REMEDIATOR_AZURE_CLIENT_ID:-}
+      AZURE_TENANT_ID: ${REMEDIATOR_AZURE_TENANT_ID:-}
+      AZURE_FEDERATED_TOKEN_FILE: /run/cloud-identity/azure/token
+      AZURE_AUTHORITY_HOST: ${REMEDIATOR_AZURE_AUTHORITY_HOST:-https://login.microsoftonline.com/}
+    volumes:
+      - *recipients
+      - *approval-public
+      - *database-ca
+      - type: bind
+        source: ${REMEDIATOR_PRIVATE_KEYS_PATH:?set the absolute remediator private keyring path}
+        target: /run/cremore/remediator-private.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REMEDIATOR_CLOUD_IDENTITY_DIR:?set the separate remediator identity directory}
+        target: /run/cloud-identity
+        read_only: true
+        bind: {create_host_path: false}
+    networks: [remediator-egress]
+    healthcheck: *worker-health
+
+  control:
+    <<: *python
+    command: [cremore-worker]
+    # The control process also sends Slack detection alerts: a stop lets the pass in hand finish its
+    # acknowledgements instead of leaving them to wait out their claim lease and go out twice.
+    stop_grace_period: 30s
+    environment:
+      <<: *platform-env
+      WORKER_EXECUTION_ROLE: control
+      WORKER_HEARTBEAT_FILE: /tmp/cremore-worker.heartbeat
+      DATABASE_URL: ${CONTROL_DATABASE_URL:?set the distinct control database login}
+      CONTROL_SEALING_KEY: ${CONTROL_SEALING_KEY:?set the API and control sealing key}
+    volumes: [*recipients, *database-ca]
+    networks: [control-egress]
+    healthcheck: *worker-health
+
+  siem:
+    <<: *python
+    command: [cremore-siem, --config, /run/cremore/siem.json]
+    environment:
+      ISOLATED_DEPLOYMENT: "true"
+      SIEM_DATABASE_URL: ${SIEM_DATABASE_URL:?set the distinct restricted SIEM database login}
+      SIEM_HEARTBEAT_FILE: /tmp/cremore-siem.heartbeat
+      # All built-in adapters accept an env-reference name in their JSON config.
+      # Use this one token only for the selected destination, never a collector token.
+      SIEM_DESTINATION_TOKEN: ${SIEM_DESTINATION_TOKEN:-}
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+    volumes:
+      - *database-ca
+      - type: bind
+        source: ${SIEM_CONFIG_PATH:?set the absolute SIEM destination JSON path}
+        target: /run/cremore/siem.json
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${SIEM_TLS_DIR:?set the separate SIEM certificate directory}
+        target: /etc/cremore-siem
+        read_only: true
+        bind: {create_host_path: false}
+    networks: [siem-egress]
+    healthcheck:
+      test: [CMD, python, -c, "import os,time; assert time.time()-os.stat('/tmp/cremore-siem.heartbeat').st_mtime < 180"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  migrate:
+    <<: *python
+    profiles: [migration]
+    restart: "no"
+    command: [python, -m, cremore.db.startup]
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?set the distinct migration database login}
+    volumes: [*database-ca]
+    networks: [migration-egress]
+
+  web:
+    <<: *hardened
+    image: "${CREMORE_WEB_REPOSITORY:?set the reviewed web repository}@sha256:${CREMORE_WEB_SHA256:?set the reviewed web digest}"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      CREMORE_AUTH_MODE: oidc
+      CREMORE_API_URL: http://api:8080
+      CREMORE_API_TOKEN: ""
+    networks: [oidc-web, web-api]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, /nodejs/bin/node, -e, "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  oauth2-proxy:
+    <<: *hardened
+    image: "${CREMORE_OIDC_REPOSITORY:?set the reviewed OIDC proxy repository}@sha256:${CREMORE_OIDC_SHA256:?set the reviewed OIDC proxy digest}"
+    dns: ["${CREMORE_DNS_SERVER:?set the constrained resolver IP}"]
+    command:
+      - --provider=oidc
+      - --oidc-issuer-url=${OIDC_ISSUER_URL:?set the HTTPS OIDC issuer}
+      - --client-id=${OIDC_CLIENT_ID:?set the OIDC client ID}
+      - --scope=${OIDC_SCOPES:-openid profile email groups offline_access}
+      - --email-domain=*
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --upstream=http://web:3000
+      - --redirect-url=https://${PUBLIC_HOST:?set the public hostname}/oauth2/callback
+      - --pass-authorization-header=true
+      - --skip-provider-button=true
+      # Only this machine endpoint bypasses browser login; API verifies HMAC.
+      - --skip-auth-route=POST=^/api/v1/hooks/notion/[0-9a-f-]{36}$$
+      - --cookie-secure=true
+      - --cookie-httponly=true
+      - --cookie-samesite=lax
+      - --cookie-name=__Host-cremore_session
+      - --cookie-path=/
+      - --cookie-csrf-per-request=true
+      - --cookie-csrf-per-request-limit=5
+      - --cookie-csrf-expire=5m
+      - --cookie-refresh=1h
+      - --cookie-expire=8h
+      - --silence-ping-logging=true
+      - --request-logging=false
+    environment:
+      OAUTH2_PROXY_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?set the OIDC proxy client secret}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OIDC_COOKIE_SECRET:?set the OIDC proxy cookie secret}
+    networks: [gateway-oidc, oidc-web, oidc-egress]
+    depends_on:
+      web: {condition: service_healthy}
+
+  gateway:
+    <<: *hardened
+    image: "${CREMORE_CADDY_REPOSITORY:?set the reviewed Caddy repository}@sha256:${CREMORE_CADDY_SHA256:?set the reviewed Caddy digest}"
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set the public hostname}
+      XDG_DATA_HOME: /data
+      XDG_CONFIG_HOME: /config
+    ports:
+      - "${PUBLIC_BIND_IP:?set the host address for HTTPS}:443:8443"
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${TLS_CERT_DIRECTORY:?set the absolute gateway TLS directory}
+        target: /run/tls
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16777216,mode=1777
+      - /data:rw,noexec,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532
+      - /config:rw,noexec,nosuid,nodev,size=16777216,mode=0700,uid=65532,gid=65532
+    networks: [edge, gateway-oidc]
+    depends_on:
+      oauth2-proxy: {condition: service_started}
+
+# Only the three adjacent application links are created by Compose. No service
+# joins its implicit default network. External networks MUST already enforce
+# NETWORK_CONTRACT.md; a plain Docker bridge does not filter Internet egress.
+networks:
+  gateway-oidc: {internal: true}
+  oidc-web: {internal: true}
+  web-api: {internal: true}
+  edge:
+    external: true
+    name: ${CREMORE_EDGE_NETWORK:?provision the constrained edge network first}
+  api-egress:
+    external: true
+    name: ${CREMORE_API_NETWORK:?provision the constrained API network first}
+  collector-egress:
+    external: true
+    name: ${CREMORE_COLLECTOR_NETWORK:?provision the constrained collector network first}
+  remediator-egress:
+    external: true
+    name: ${CREMORE_REMEDIATOR_NETWORK:?provision the constrained remediator network first}
+  control-egress:
+    external: true
+    name: ${CREMORE_CONTROL_NETWORK:?provision the constrained control network first}
+  siem-egress:
+    external: true
+    name: ${CREMORE_SIEM_NETWORK:?provision the constrained SIEM network first}
+  oidc-egress:
+    external: true
+    name: ${CREMORE_OIDC_NETWORK:?provision the constrained OIDC network first}
+  migration-egress:
+    external: true
+    name: ${CREMORE_MIGRATION_NETWORK:?provision the constrained migration network first}

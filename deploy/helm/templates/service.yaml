@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cremore.fullname" . }}-api
+  labels: {{ include "cremore.labels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{ include "cremore.selectorLabels" (dict "root" . "component" "api") | nindent 4 }}
+  ports:
+    - { name: https, port: 8443, targetPort: http }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cremore.fullname" . }}-web
+  labels: {{ include "cremore.labels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{ include "cremore.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - { name: https, port: 443, targetPort: oauth-https }

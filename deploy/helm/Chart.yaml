@@ -1,0 +1,7 @@
+apiVersion: v2
+name: cremore
+description: Self-hosted credential exposure detection and governance (S3, GitHub, Notion) — Python API and worker with a Next.js dashboard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

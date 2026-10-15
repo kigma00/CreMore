@@ -1,0 +1,128 @@
+# External-exposure overlay for docker-compose.yml.
+#
+#   Internet → Caddy (:443, TLS)  →  oauth2-proxy (OIDC login)
+#                                    →  web (CREMORE_AUTH_MODE=oidc, forwards the
+#                                          user's bearer, never the admin token)
+#                                    →  api (AUTH_MODE=oidc, validates the JWT
+#                                          and maps groups → RBAC role)
+#
+# The base Compose runs in `local` mode, where the web proxy attaches the shared
+# admin token for loopback callers. This overlay switches web AND api to OIDC so
+# an external request is authenticated per user and can never reach that
+# admin-token path. It reuses the same OIDC model as the Helm chart
+# (oauth2-proxy → web → API OIDC verification).
+#
+# Usage:
+#   Released installations also apply compose.release.yml last; see README.md.
+#   cp deploy/compose/reverse-proxy/.env.public.example .env.public
+#   # fill in PUBLIC_HOST and the OIDC_* values, then:
+#   docker compose --env-file .env --env-file .env.public \
+#     -f docker-compose.yml -f deploy/compose/reverse-proxy/compose.public.yml up -d
+
+# Shared by api and worker: what changes when more than one person uses this.
+x-shared-install: &shared-install
+  # IAM Identity Center access reads the interactive `aws sso login` token
+  # cached on this machine. On a shared server that is ONE person's session, so
+  # every user of the dashboard would reach AWS as them and the sweep would run
+  # under their assignment. This overlay locks discovery off; deploy/helm also
+  # defaults it off, but permits an explicit operator opt-in with a token cache.
+  # Use deployed member roles for unattended shared installations.
+  AWS_SSO_DISCOVERY_MODE: disabled
+  # The shared admin token cannot authenticate in OIDC mode, so it is cleared
+  # rather than left in the container. It also means flipping AUTH_MODE back to
+  # local fails at startup instead of quietly re-enabling one shared identity.
+  API_TOKEN: ""
+
+services:
+  api:
+    # The API validates every bearer itself (issuer, JWKS signature, audience,
+    # expiry) and maps the groups claim to a role. Missing issuer/audience is a
+    # startup error, so both are required here.
+    environment:
+      <<: *shared-install
+      AUTH_MODE: oidc
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:?set OIDC_ISSUER_URL in .env.public}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:?set OIDC_AUDIENCE in .env.public}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
+      OIDC_VIEWER_GROUP: ${OIDC_VIEWER_GROUP:-}
+      OIDC_ANALYST_GROUP: ${OIDC_ANALYST_GROUP:-}
+      OIDC_REMEDIATOR_GROUP: ${OIDC_REMEDIATOR_GROUP:-}
+      OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-}
+
+  worker:
+    # The Identity Center sweep runs here, so the lock has to be on this service
+    # too: the API only reports the setting, the worker is what would act on it.
+    environment:
+      <<: *shared-install
+
+  web:
+    # oidc mode: the proxy forwards the caller's OIDC bearer and never attaches
+    # the local admin token, whatever the Host header says.
+    environment:
+      CREMORE_AUTH_MODE: oidc
+      # Nothing here can use it, so the container does not hold it.
+      CREMORE_API_TOKEN: ""
+
+  oauth2-proxy:
+    image: ghcr.io/y4rvin/cremore-oauth2-proxy:0.1.0
+    command:
+      - --provider=oidc
+      - --oidc-issuer-url=${OIDC_ISSUER_URL:?set OIDC_ISSUER_URL in .env.public}
+      - --client-id=${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID in .env.public}
+      - --scope=openid profile email groups offline_access
+      - --email-domain=*
+      # Caddy terminates TLS and forwards here over the internal network.
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --upstream=http://web:3000
+      - --redirect-url=https://${PUBLIC_HOST:?set PUBLIC_HOST in .env.public}/oauth2/callback
+      # Hand the validated bearer to web, which passes it to the API.
+      - --pass-authorization-header=true
+      - --skip-provider-button=true
+      - --skip-auth-route=POST=^/api/v1/hooks/notion/[0-9a-f-]{36}$$
+      - --cookie-secure=true
+      - --cookie-httponly=true
+      - --cookie-samesite=lax
+      - --cookie-name=__Host-cremore_session
+      - --cookie-path=/
+      - --cookie-csrf-per-request=true
+      - --cookie-csrf-per-request-limit=5
+      - --cookie-csrf-expire=5m
+      - --cookie-refresh=1h
+      - --cookie-expire=8h
+      - --silence-ping-logging=true
+      # Keep Google callback authorization codes out of request logs.
+      - --request-logging=false
+    environment:
+      OAUTH2_PROXY_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET in .env.public}
+      # 32 random bytes, base64url. Generate: openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
+      OAUTH2_PROXY_COOKIE_SECRET: ${OIDC_COOKIE_SECRET:?set OIDC_COOKIE_SECRET in .env.public}
+    depends_on:
+      - web
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "443:443"
+      - "443:443/udp"
+      - "80:80"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in .env.public}
+    volumes:
+      - ./deploy/compose/reverse-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - oauth2-proxy
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

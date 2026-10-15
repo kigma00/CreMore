@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {
+      "id": "qradar",
+      "provider": "syslog_tls",
+      "options": {
+        "host": "qradar.internal.example",
+        "port": 6514,
+        "ca_file": "/etc/cremore-siem/qradar-ca.pem",
+        "message_format": "leef"
+      }
+    }
+  ]
+}

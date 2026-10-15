@@ -1,0 +1,244 @@
+{{- /* Legacy deploymentMode, auth.mode=oidc and applicationSecret.apiTokenKey are ignored so existing values files still install. */ -}}
+{{- /* Only shape checks and CreMore-owned guarantees. Network, TLS and identity design belong to the installer. */ -}}
+{{- if not (kindIs "bool" .Values.image.requireDigest) -}}
+{{- fail "image.requireDigest must be a boolean" -}}
+{{- end -}}
+{{- if and .Values.aws.rolesAnywhere.enabled .Values.aws.webIdentity.enabled -}}
+{{- fail "Choose only one AWS workload identity source" -}}
+{{- end -}}
+{{- if .Values.aws.rolesAnywhere.enabled -}}
+{{- $_ := required "aws.rolesAnywhere.secretName is required" .Values.aws.rolesAnywhere.secretName -}}
+{{- end -}}
+{{- if .Values.aws.webIdentity.enabled -}}
+{{- if not (regexMatch "^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$" .Values.aws.webIdentity.roleArn) -}}
+{{- fail "aws.webIdentity.roleArn must be an IAM role ARN" -}}
+{{- end -}}
+{{- $_ := required "aws.webIdentity.audience is required" .Values.aws.webIdentity.audience -}}
+{{- $seconds := int .Values.aws.webIdentity.expirationSeconds -}}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .Values.aws.webIdentity.expirationSeconds))) (lt $seconds 600) (gt $seconds 86400) -}}
+{{- fail "aws.webIdentity.expirationSeconds must be 600..86400" -}}
+{{- end -}}
+{{- end -}}
+{{- if or .Values.aws.rolesAnywhere.enabled .Values.aws.webIdentity.enabled -}}
+{{- if or .Values.networkPolicy.eksPodIdentity (hasKey .Values.serviceAccounts.api.annotations "eks.amazonaws.com/role-arn") (hasKey .Values.serviceAccounts.worker.annotations "eks.amazonaws.com/role-arn") -}}
+{{- fail "Do not combine explicit AWS identity with EKS Pod Identity or IRSA annotations" -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.image.requireDigest -}}
+{{- $images := dict "api" .Values.image.api "worker" .Values.image.worker "web" .Values.image.web "oauth2-proxy" .Values.auth.oidc.oauth2Proxy.image -}}
+{{- if .Values.siem.enabled -}}
+{{- $_ := set $images "siem" (default .Values.image.worker .Values.siem.image) -}}
+{{- end -}}
+{{- range $component, $image := $images -}}
+{{- if not (regexMatch "^[^[:space:]@]+@sha256:[a-f0-9]{64}$" (toString $image)) -}}
+{{- fail (printf "%s image must be pinned to a sha256 digest for a release" $component) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if and (hasKey .Values.auth "mode") (ne .Values.auth.mode "oidc") -}}
+{{- fail "this chart renders OIDC (oauth2-proxy); use docker-compose or your own manifests for AUTH_MODE=local" -}}
+{{- end -}}
+{{- if not (has .Values.config.verificationMode (list "disabled" "enabled")) -}}
+{{- fail "config.verificationMode must be disabled or enabled" -}}
+{{- end -}}
+{{- if not (has .Values.config.ssoDiscoveryMode (list "disabled" "enabled")) -}}
+{{- fail "config.ssoDiscoveryMode must be disabled or enabled" -}}
+{{- end -}}
+{{- if not (has .Values.config.learnedFalsePositivesMode (list "disabled" "enabled")) -}}
+{{- fail "config.learnedFalsePositivesMode must be disabled or enabled" -}}
+{{- end -}}
+{{- range $mode := list "iamPotentialAccessMode" "awsSecretsInventoryMode" "awsUsageLookupMode" -}}
+{{- if not (has (index $.Values.config $mode) (list "disabled" "enabled")) -}}
+{{- fail (printf "config.%s must be disabled or enabled" $mode) -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := required "auth.oidc.issuerURL is required" .Values.auth.oidc.issuerURL -}}
+{{- $_ := required "auth.oidc.audience is required" .Values.auth.oidc.audience -}}
+{{- $_ := required "auth.oidc.clientID is required" .Values.auth.oidc.clientID -}}
+{{- $_ := required "auth.oidc.secret.name is required" .Values.auth.oidc.secret.name -}}
+{{- $onboarding := not (empty .Values.config.onboardingTemplateURL) -}}
+{{- $principal := not (empty .Values.config.scannerPrincipalArn) -}}
+{{- if and $onboarding (not (regexMatch "^https://[^/[:space:]]+" .Values.config.onboardingTemplateURL)) -}}
+{{- fail "config.onboardingTemplateURL must be HTTPS" -}}
+{{- end -}}
+{{- if and $principal (not (regexMatch "^arn:aws(-[a-z]+)*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,512}$" .Values.config.scannerPrincipalArn)) -}}
+{{- fail "config.scannerPrincipalArn must be an exact IAM role ARN" -}}
+{{- end -}}
+{{- with .Values.config.operations -}}
+{{- if or (not (regexMatch "^[0-9]{1,2}$" (toString .heartbeatMinutes))) (lt (int .heartbeatMinutes) 1) (gt (int .heartbeatMinutes) 60) -}}
+{{- fail "config.operations.heartbeatMinutes must be an integer from 1 to 60" -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[0-9]{1,4}$" (toString .siemEventRetentionDays))) (gt (int .siemEventRetentionDays) 3650) -}}
+{{- fail "config.operations.siemEventRetentionDays must be an integer from 0 to 3650" -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[0-9]{2,4}$" (toString .leaverRetentionDays))) (lt (int .leaverRetentionDays) 30) (gt (int .leaverRetentionDays) 3650) -}}
+{{- fail "config.operations.leaverRetentionDays must be an integer from 30 to 3650" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (regexMatch "^[1-9][0-9]*$" (toString .Values.config.maxObjectSizeMB)) -}}
+{{- fail "config.maxObjectSizeMB must be a positive integer" -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[0-9]{1,2}$" (toString .Values.config.workerConcurrency))) (gt (int .Values.config.workerConcurrency) 32) -}}
+{{- fail "config.workerConcurrency must be an integer from 0 to 32" -}}
+{{- end -}}
+{{- if not (kindIs "bool" .Values.workerPod.shareProcessNamespace) -}}
+{{- fail "workerPod.shareProcessNamespace must be a boolean" -}}
+{{- end -}}
+{{- range $flag := list "rotationExecutionEnabled" "actionExecutionEnabled" "actionDeletionEnabled" -}}
+{{- if not (kindIs "bool" (index $.Values.config $flag)) -}}
+{{- fail (printf "config.%s must be a boolean" $flag) -}}
+{{- end -}}
+{{- end -}}
+{{- range $list := list "rotationSecretArns" "secretManagerAllowedReferences" -}}
+{{- if not (kindIs "slice" (index $.Values.config $list)) -}}
+{{- fail (printf "config.%s must be a list of Secrets Manager ARNs" $list) -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.config.actionDeletionEnabled (not .Values.config.actionExecutionEnabled) -}}
+{{- fail "config.actionDeletionEnabled requires config.actionExecutionEnabled=true" -}}
+{{- end -}}
+{{- if and .Values.config.sealing.vaultPath (not .Values.secretStore.enabled) -}}
+{{- fail "config.sealing.vaultPath requires secretStore.enabled: the master is read from it" -}}
+{{- end -}}
+{{- if and .Values.config.sealing.vaultPath (not .Values.config.sealing.vaultField) -}}
+{{- fail "config.sealing.vaultField must name the field holding the master" -}}
+{{- end -}}
+{{- if and .Values.config.sealing.kmsKeyId (not .Values.config.sealing.keyCiphertext) -}}
+{{- fail "config.sealing.kmsKeyId needs keyCiphertext: the CMK alone is not the master" -}}
+{{- end -}}
+{{- if and .Values.config.sealing.keyCiphertext (not .Values.config.sealing.kmsKeyId) -}}
+{{- fail "config.sealing.keyCiphertext requires kmsKeyId naming the CMK that opens it" -}}
+{{- end -}}
+{{- with .Values.azure.workloadIdentity -}}
+{{- if .enabled -}}
+{{- if not (regexMatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" (toString .clientId)) -}}
+{{- fail "azure.workloadIdentity.clientId must be the Entra application (client) ID" -}}
+{{- end -}}
+{{- if and .tenantId (not (regexMatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" (toString .tenantId))) -}}
+{{- fail "azure.workloadIdentity.tenantId must be a tenant ID" -}}
+{{- end -}}
+{{- $expiration := toString .tokenExpirationSeconds -}}
+{{- if or (not (regexMatch "^[0-9]{4,5}$" $expiration)) (lt (int $expiration) 3600) (gt (int $expiration) 86400) -}}
+{{- fail "azure.workloadIdentity.tokenExpirationSeconds must be an integer from 3600 to 86400" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $seen := dict -}}
+{{- range .Values.vaultConnections.tokens -}}
+{{- if not (regexMatch "^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$" (toString .name)) -}}
+{{- fail "vaultConnections.tokens[].name must be a file name (letters, digits, . _ -)" -}}
+{{- end -}}
+{{- if hasKey $seen (toString .name) -}}
+{{- fail "vaultConnections.tokens[].name must be unique" -}}
+{{- end -}}
+{{- $_ := set $seen (toString .name) true -}}
+{{- $_ := required "vaultConnections.tokens[].audience is required" .audience -}}
+{{- end -}}
+{{- $connectionExpiration := toString .Values.vaultConnections.expirationSeconds -}}
+{{- if or (not (regexMatch "^[0-9]{3,5}$" $connectionExpiration)) (lt (int $connectionExpiration) 600) (gt (int $connectionExpiration) 86400) -}}
+{{- fail "vaultConnections.expirationSeconds must be an integer from 600 to 86400" -}}
+{{- end -}}
+{{- range .Values.vaultConnections.egress -}}
+{{- $_ := required "vaultConnections.egress[].cidr is required" .cidr -}}
+{{- if or (lt (int .port) 1) (gt (int .port) 65535) -}}
+{{- fail "vaultConnections.egress[].port must be a TCP port" -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.secretStore.enabled -}}
+{{- $_ := required "secretStore.secretName is required when secretStore.enabled" .Values.secretStore.secretName -}}
+{{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$" .Values.secretStore.mount) -}}
+{{- fail "secretStore.mount must be a single safe path segment" -}}
+{{- end -}}
+{{- if not (has .Values.secretStore.authMode (list "token" "kubernetes")) -}}
+{{- fail "secretStore.authMode must be token or kubernetes" -}}
+{{- end -}}
+{{- if eq .Values.secretStore.authMode "token" -}}
+{{- $_ := required "secretStore.tokenKey is required for token auth" .Values.secretStore.tokenKey -}}
+{{- else -}}
+{{- $_ := required "secretStore.kubernetes.role is required for kubernetes auth" .Values.secretStore.kubernetes.role -}}
+{{- $_ := required "secretStore.kubernetes.audience is required for kubernetes auth" .Values.secretStore.kubernetes.audience -}}
+{{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$" .Values.secretStore.kubernetes.authMount) -}}
+{{- fail "secretStore.kubernetes.authMount must be a single safe path segment" -}}
+{{- end -}}
+{{- $tokenExpiration := toString .Values.secretStore.kubernetes.tokenExpirationSeconds -}}
+{{- if or (not (regexMatch "^[0-9]{3,5}$" $tokenExpiration)) (lt (int $tokenExpiration) 600) (gt (int $tokenExpiration) 86400) -}}
+{{- fail "secretStore.kubernetes.tokenExpirationSeconds must be an integer from 600 to 86400" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if not (kindIs "slice" .Values.auth.oidc.scopes) -}}
+{{- fail "auth.oidc.scopes must be a list" -}}
+{{- end -}}
+{{- range $name := list "cookieRefresh" "cookieExpire" -}}
+{{- if not (regexMatch "^[1-9][0-9]*(s|m|h)$" (index $.Values.auth.oidc.oauth2Proxy $name)) -}}
+{{- fail (printf "auth.oidc.oauth2Proxy.%s must be a positive s/m/h duration" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := required "internalTLS.apiSecretName is required" .Values.internalTLS.apiSecretName -}}
+{{- $_ := required "internalTLS.webSecretName is required" .Values.internalTLS.webSecretName -}}
+{{- $_ := required "internalTLS.caSecretName is required" .Values.internalTLS.caSecretName -}}
+{{- $_ := required "applicationSecret.fingerprintKey is required" .Values.applicationSecret.fingerprintKey -}}
+{{- range $mode, $value := dict "schedulesMode" .Values.scanning.schedulesMode "sqs.mode" .Values.scanning.sqs.mode "pubsub.mode" .Values.scanning.pubsub.mode "serviceBus.mode" .Values.scanning.serviceBus.mode "changeFeedsMode" .Values.scanning.changeFeedsMode -}}
+{{- if not (has $value (list "disabled" "enabled")) -}}
+{{- fail (printf "scanning.%s must be disabled or enabled" $mode) -}}
+{{- end -}}
+{{- end -}}
+{{- range $flag, $value := dict "sqs.dedicatedAcknowledged" .Values.scanning.sqs.dedicatedAcknowledged -}}
+{{- if not (kindIs "bool" $value) -}}
+{{- fail (printf "scanning.%s must be a boolean" $flag) -}}
+{{- end -}}
+{{- end -}}
+{{- $uuid := "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" -}}
+{{- if and (not (empty .Values.scanning.sqs.profileId)) (not (regexMatch $uuid (toString .Values.scanning.sqs.profileId))) -}}
+{{- fail "scanning.sqs.profileId must be an approved profile UUID" -}}
+{{- end -}}
+{{- if and (not (empty .Values.scanning.sqs.queueURL)) (not (regexMatch "^https://sqs\\.[a-z0-9-]+\\.amazonaws\\.com(\\.cn)?(:443)?/[0-9]{12}/[A-Za-z0-9_-]+(\\.fifo)?$" (toString .Values.scanning.sqs.queueURL))) -}}
+{{- fail "scanning.sqs.queueURL must be an explicit HTTPS AWS queue URL" -}}
+{{- end -}}
+{{- if not (kindIs "map" .Values.scanning.inventoryManifests) -}}
+{{- fail "scanning.inventoryManifests must be a map of connectionUUID/bucket to existing report pointers" -}}
+{{- end -}}
+{{- range $identity, $pointer := .Values.scanning.inventoryManifests -}}
+{{- if not (regexMatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[^/[:space:]]+$" $identity) -}}
+{{- fail "scanning.inventoryManifests keys must be connectionUUID/bucket" -}}
+{{- end -}}
+{{- if or (not (kindIs "map" $pointer)) (ne (len $pointer) 2) -}}
+{{- fail "each scanning.inventoryManifests pointer requires only manifest_bucket and manifest_key" -}}
+{{- end -}}
+{{- range $key := list "manifest_bucket" "manifest_key" -}}
+{{- if or (not (kindIs "string" (index $pointer $key))) (empty (index $pointer $key)) -}}
+{{- fail "each scanning.inventoryManifests pointer requires non-empty manifest_bucket and manifest_key strings" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.networkPolicy.enabled -}}
+{{- range $name := list "dnsNamespaceSelector" "dnsPodSelector" -}}
+{{- $selector := index $.Values.networkPolicy $name -}}
+{{- if or (not (kindIs "map" $selector)) (empty $selector) -}}
+{{- fail (printf "networkPolicy.%s must be a non-empty matchLabels map" $name) -}}
+{{- end -}}
+{{- range $key, $value := $selector -}}
+{{- if or (empty $key) (not (kindIs "string" $value)) -}}
+{{- fail (printf "networkPolicy.%s labels must have non-empty keys and string values" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $databasePort := toString .Values.networkPolicy.databasePort -}}
+{{- if or (not (regexMatch "^[0-9]{1,5}$" $databasePort)) (lt (int $databasePort) 1) (gt (int $databasePort) 65535) -}}
+{{- fail "networkPolicy.databasePort must be an integer from 1 to 65535" -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.siem.enabled -}}
+{{- if or (not (kindIs "slice" .Values.siem.config.destinations)) (empty .Values.siem.config.destinations) -}}
+{{- fail "siem.config.destinations must list at least one destination" -}}
+{{- end -}}
+{{- $_ := required "siem.databaseUrlSecret.name is required: the exporter uses its own restricted role" .Values.siem.databaseUrlSecret.name -}}
+{{- if or (not (kindIs "slice" .Values.siem.egressPorts)) (empty .Values.siem.egressPorts) -}}
+{{- fail "siem.egressPorts must list the destinations' TCP ports" -}}
+{{- end -}}
+{{- range $port := .Values.siem.egressPorts -}}
+{{- if or (not (regexMatch "^[0-9]{1,5}$" (toString $port))) (lt (int $port) 1) (gt (int $port) 65535) -}}
+{{- fail "siem.egressPorts must be integers from 1 to 65535" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

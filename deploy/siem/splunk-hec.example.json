@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {
+      "id": "soc_splunk",
+      "provider": "splunk_hec",
+      "options": {
+        "endpoint": "https://splunk.internal.example:8088/services/collector/event",
+        "token_env": "SPLUNK_HEC_TOKEN",
+        "timeout_seconds": 10.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+.git
+third_party
+.env
+.env.*
+!.env.example
+work
+outputs
+output
+.claude
+.unlazy
+web
+tmp
+*.log
+# Runtime profiles, scan input, and fingerprint keys are mounted, never built.
+configs/
+# Include the GCP library reused by the product, without standalone state or docs.
+**/standalone
+!gcp/standalone
+gcp/standalone/*
+!gcp/standalone/cremore_gcp
+**/web
+**/.local
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.venv
+**/venv
+**/*.pyc
+**/*.pyo
+**/.env
+**/.env.*
+!.env.example

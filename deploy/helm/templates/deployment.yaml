@@ -1,0 +1,491 @@
+{{- $chart := . -}}
+{{- $components := list "api" "worker" "web" -}}
+{{- if .Values.isolation.enabled }}{{ $components = concat $components (list "remediator" "control") }}{{ end }}
+{{- range $name := $components }}
+{{- $root := deepCopy $chart -}}
+{{- $isolated := $root.Values.isolation.enabled -}}
+{{- $isWorker := has $name (list "worker" "remediator" "control") -}}
+{{- $cloud := or (not $isolated) (has $name (list "worker" "remediator")) -}}
+{{- if and $isolated (eq $name "remediator") }}
+{{- $_ := set $root.Values "aws" $root.Values.isolation.remediatorIdentity.aws }}
+{{- $_ := set $root.Values "gcp" $root.Values.isolation.remediatorIdentity.gcp }}
+{{- $_ := set $root.Values "azure" $root.Values.isolation.remediatorIdentity.azure }}
+{{- end }}
+{{- if not $cloud }}
+{{- $_ := set $root.Values.aws.webIdentity "enabled" false }}
+{{- $_ := set $root.Values.aws.rolesAnywhere "enabled" false }}
+{{- $_ := set $root.Values.azure.workloadIdentity "enabled" false }}
+{{- end }}
+{{- /* The worker resolves every connection's vault:// reference. The API needs
+       the store only to read the master that seals a credential an operator
+       types in, so it is wired in solely for that, and can use a role or token
+       that reads just that path. */}}
+{{- $sealingFromVault := $root.Values.config.sealing.vaultPath }}
+{{- $needsStore := and $root.Values.secretStore.enabled (or (eq $name "worker") (and (not $isolated) (eq $name "api") $sealingFromVault)) }}
+{{- $storeRole := $root.Values.secretStore.kubernetes.role }}
+{{- $storeTokenKey := $root.Values.secretStore.tokenKey }}
+{{- $azureIdentity := $root.Values.azure.workloadIdentity.enabled }}
+{{- $vaultConnections := and (eq $name "worker") $root.Values.vaultConnections.tokens }}
+{{- if eq $name "api" }}
+{{- with $root.Values.secretStore.kubernetes.sealingRole }}{{ $storeRole = . }}{{ end }}
+{{- with $root.Values.secretStore.sealingTokenKey }}{{ $storeTokenKey = . }}{{ end }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cremore.fullname" $root }}-{{ $name }}
+  labels: {{ include "cremore.labels" (dict "root" $root "component" $name) | nindent 4 }}
+spec:
+  replicas: {{ index $root.Values.replicas $name }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{ include "cremore.selectorLabels" (dict "root" $root "component" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{ include "cremore.selectorLabels" (dict "root" $root "component" $name) | nindent 8 }}
+        {{- if and $azureIdentity (ne $name "web") }}
+        {{- /* Only labelled pods get the webhook's token volume and AZURE_* variables. */}}
+        azure.workload.identity/use: "true"
+        {{- end }}
+      {{- if and $azureIdentity (ne $name "web") }}
+      annotations:
+        azure.workload.identity/service-account-token-expiration: {{ $root.Values.azure.workloadIdentity.tokenExpirationSeconds | quote }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "cremore.serviceAccountName" (dict "root" $root "component" $name) }}
+      automountServiceAccountToken: {{ index (index $root.Values.serviceAccounts $name) "automountServiceAccountToken" }}
+      {{- if and (eq $name "worker") $root.Values.workerPod.shareProcessNamespace }}
+      {{- /* Opt-in (values: workerPod): the pod's pause process becomes PID 1 and reaps orphaned
+             document-parser children, since the image has no init process. */}}
+      shareProcessNamespace: true
+      {{- end }}
+      terminationGracePeriodSeconds: 30
+      {{- if and $isolated (index $root.Values.isolation.nodeSelectors $name) }}
+      nodeSelector: {{ toYaml (index $root.Values.isolation.nodeSelectors $name) | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{ include "cremore.selectorLabels" (dict "root" $root "component" $name) | nindent 14 }}
+      containers:
+        - name: {{ $name }}
+          image: {{ index $root.Values.image (ternary "worker" $name $isWorker) | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          {{- if eq $name "api" }}
+          command: ["cremore-api"]
+          {{- else if $isWorker }}
+          command: ["cremore-worker"]
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          {{- if not $isWorker }}
+          ports:
+            - name: http
+              containerPort: {{ if eq $name "api" }}8080{{ else }}3000{{ end }}
+          {{- end }}
+          env:
+            {{- if eq $name "web" }}
+            - { name: CREMORE_API_URL, value: "https://{{ include "cremore.fullname" $root }}-api:8443" }
+            - { name: CREMORE_AUTH_MODE, value: "oidc" }
+            - { name: NODE_EXTRA_CA_CERTS, value: /run/internal-ca/ca.crt }
+            {{- else }}
+            - { name: AUTH_MODE, value: "oidc" }
+            - name: DATABASE_URL
+              {{- if $isolated }}
+              valueFrom: { secretKeyRef: { name: {{ index $root.Values.isolation.databaseSecrets $name }}, key: url } }
+              {{- else }}
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.databaseUrlSecret.name }}, key: {{ $root.Values.databaseUrlSecret.key }} } }
+              {{- end }}
+            {{- if $isolated }}
+            - { name: ISOLATED_DEPLOYMENT, value: "true" }
+            - { name: WORKER_EXECUTION_ROLE, value: {{ ternary "collector" (ternary "control" $name (eq $name "api")) (eq $name "worker") | quote }} }
+            - { name: SEALING_PUBLIC_KEYS_FILE, value: /run/cremore-recipients/recipients.json }
+            - { name: REMEDIATION_APPROVAL_PUBLIC_KEY_FILE, value: /run/cremore-approval/public.pem }
+            {{- if has $name (list "worker" "remediator") }}
+            - { name: SEALING_PRIVATE_KEYS_FILE, value: /run/cremore-private/private-keys.json }
+            {{- else }}
+            - name: CONTROL_SEALING_KEY
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.isolation.controlKeySecret }}, key: key } }
+            {{- end }}
+            {{- end }}
+            - name: FINGERPRINT_KEY
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.applicationSecret.name }}, key: {{ $root.Values.applicationSecret.fingerprintKey }} } }
+            {{- if and (not $isolated) $root.Values.applicationSecret.sealingKey }}
+            - name: SEALING_KEY
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.applicationSecret.name }}, key: {{ $root.Values.applicationSecret.sealingKey }} } }
+            {{- end }}
+            {{- if and (not $isolated) $root.Values.applicationSecret.sealingKeyPrevious }}
+            - name: SEALING_KEY_PREVIOUS
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.applicationSecret.name }}, key: {{ $root.Values.applicationSecret.sealingKeyPrevious }} } }
+            {{- end }}
+            {{- if $root.Values.applicationSecret.auditChainKey }}
+            - name: AUDIT_CHAIN_KEY
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.applicationSecret.name }}, key: {{ $root.Values.applicationSecret.auditChainKey }} } }
+            {{- end }}
+            {{- if not $isolated }}
+            {{- with $root.Values.config.sealing }}
+            {{- if .kmsKeyId }}
+            - { name: SEALING_KMS_KEY_ID, value: {{ .kmsKeyId | quote }} }
+            - { name: SEALING_KEY_CIPHERTEXT, value: {{ .keyCiphertext | quote }} }
+            - { name: SEALING_KEY_CIPHERTEXT_PREVIOUS, value: {{ .keyCiphertextPrevious | quote }} }
+            {{- end }}
+            {{- if .vaultPath }}
+            - { name: SEALING_KEY_VAULT_PATH, value: {{ .vaultPath | quote }} }
+            - { name: SEALING_KEY_VAULT_PATH_PREVIOUS, value: {{ .vaultPathPrevious | quote }} }
+            - { name: SEALING_KEY_VAULT_FIELD, value: {{ .vaultField | quote }} }
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            - { name: AWS_REGION, value: {{ $root.Values.config.awsRegion | quote }} }
+            - { name: AWS_SCANNER_PRINCIPAL_ARN, value: {{ $root.Values.config.scannerPrincipalArn | quote }} }
+            - { name: TICKET_SYSTEM_PLUGINS, value: {{ $root.Values.config.ticketSystemPlugins | quote }} }
+            - { name: AWS_EC2_METADATA_DISABLED, value: "true" }
+            {{- if $root.Values.aws.rolesAnywhere.enabled }}
+            - { name: AWS_PROFILE, value: cremore-roles-anywhere }
+            - { name: AWS_CONFIG_FILE, value: /run/cremore-roles-anywhere/aws-config }
+            - { name: AWS_SHARED_CREDENTIALS_FILE, value: /dev/null }
+            - { name: AWS_ROLES_ANYWHERE_CONFIG, value: /run/cremore-roles-anywhere/roles-anywhere.json }
+            {{- else if $root.Values.aws.webIdentity.enabled }}
+            - { name: AWS_ROLE_ARN, value: {{ $root.Values.aws.webIdentity.roleArn | quote }} }
+            - { name: AWS_WEB_IDENTITY_TOKEN_FILE, value: /run/cremore-aws-identity/token }
+            - { name: AWS_ROLE_SESSION_NAME, value: cremore }
+            - { name: AWS_CONFIG_FILE, value: /dev/null }
+            - { name: AWS_SHARED_CREDENTIALS_FILE, value: /dev/null }
+            {{- else if and $isolated (not $cloud) }}
+            - { name: AWS_CONFIG_FILE, value: /dev/null }
+            - { name: AWS_SHARED_CREDENTIALS_FILE, value: /dev/null }
+            {{- end }}
+            - { name: MAX_OBJECT_SIZE_MB, value: {{ $root.Values.config.maxObjectSizeMB | quote }} }
+            - { name: OPERATIONS_HEARTBEAT_MINUTES, value: {{ $root.Values.config.operations.heartbeatMinutes | quote }} }
+            - { name: SIEM_EVENT_RETENTION_DAYS, value: {{ $root.Values.config.operations.siemEventRetentionDays | quote }} }
+            - { name: LEAVER_RETENTION_DAYS, value: {{ $root.Values.config.operations.leaverRetentionDays | quote }} }
+            - { name: CREDENTIAL_VERIFICATION_MODE, value: {{ $root.Values.config.verificationMode | quote }} }
+            - { name: GITHUB_ENTERPRISE_HOSTS, value: {{ join "," $root.Values.config.githubEnterpriseHosts | quote }} }
+            - { name: AWS_SSO_DISCOVERY_MODE, value: {{ $root.Values.config.ssoDiscoveryMode | quote }} }
+            - { name: IAM_POTENTIAL_ACCESS_MODE, value: {{ $root.Values.config.iamPotentialAccessMode | quote }} }
+            - { name: LEARNED_FP_MODE, value: {{ $root.Values.config.learnedFalsePositivesMode | quote }} }
+            - { name: SCAN_SCHEDULES_MODE, value: {{ $root.Values.scanning.schedulesMode | quote }} }
+            - { name: SCAN_SQS_MODE, value: {{ $root.Values.scanning.sqs.mode | quote }} }
+            - { name: SCAN_PUBSUB_MODE, value: {{ $root.Values.scanning.pubsub.mode | quote }} }
+            - { name: SCAN_SERVICEBUS_MODE, value: {{ $root.Values.scanning.serviceBus.mode | quote }} }
+            - { name: SCAN_CHANGE_FEEDS_MODE, value: {{ $root.Values.scanning.changeFeedsMode | quote }} }
+            - { name: SCAN_SQS_QUEUE_URL, value: {{ $root.Values.scanning.sqs.queueURL | quote }} }
+            - { name: SCAN_SQS_PROFILE_ID, value: {{ $root.Values.scanning.sqs.profileId | quote }} }
+            - { name: SCAN_SQS_DEDICATED_ACKNOWLEDGED, value: {{ $root.Values.scanning.sqs.dedicatedAcknowledged | quote }} }
+            - { name: SCAN_INVENTORY_MANIFESTS, value: {{ $root.Values.scanning.inventoryManifests | toJson | quote }} }
+            {{- if $isWorker }}
+            {{- /* A plan on another provider's credential runs in the worker, which alone opens its connection's
+                   secrets and checks the plan again with these switches (docs/PROVIDER_ACTIONS.md). */}}
+            - { name: ACTION_EXECUTION_ENABLED, value: {{ and (or (not $isolated) (eq $name "remediator")) $root.Values.config.actionExecutionEnabled | quote }} }
+            - { name: ACTION_DELETION_ENABLED, value: {{ and (or (not $isolated) (eq $name "remediator")) $root.Values.config.actionDeletionEnabled | quote }} }
+            {{- if and $cloud $root.Values.gcp.adcSecretName }}
+            - { name: GOOGLE_APPLICATION_CREDENTIALS, value: /run/gcp/adc.json }
+            {{- end }}
+            {{- if $root.Values.gcp.quotaProject }}
+            - { name: GOOGLE_CLOUD_QUOTA_PROJECT, value: {{ $root.Values.gcp.quotaProject | quote }} }
+            {{- end }}
+            {{- end }}
+            {{- if and (eq $name "api") $root.Values.gcp.oauth.secretName }}
+            - name: GCP_OAUTH_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.gcp.oauth.secretName | quote }}, key: {{ $root.Values.gcp.oauth.clientIdKey | quote }} } }
+            - name: GCP_OAUTH_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.gcp.oauth.secretName | quote }}, key: {{ $root.Values.gcp.oauth.clientSecretKey | quote }} } }
+            - { name: GCP_OAUTH_REDIRECT_URI, value: {{ $root.Values.gcp.oauth.redirectUri | quote }} }
+            {{- end }}
+            {{- if $needsStore }}
+            - name: SECRET_STORE_URL
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.secretStore.secretName }}, key: {{ $root.Values.secretStore.urlKey }} } }
+            - { name: SECRET_STORE_AUTH_MODE, value: {{ $root.Values.secretStore.authMode | quote }} }
+            {{- if eq $root.Values.secretStore.authMode "token" }}
+            - name: SECRET_STORE_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $root.Values.secretStore.secretName }}, key: {{ $storeTokenKey }} } }
+            {{- else }}
+            - { name: SECRET_STORE_KUBERNETES_ROLE, value: {{ $storeRole | quote }} }
+            - { name: SECRET_STORE_KUBERNETES_AUTH_MOUNT, value: {{ $root.Values.secretStore.kubernetes.authMount | quote }} }
+            - { name: SECRET_STORE_KUBERNETES_TOKEN_FILE, value: /run/cremore-vault/token }
+            {{- end }}
+            - { name: SECRET_STORE_MOUNT, value: {{ $root.Values.secretStore.mount | quote }} }
+            {{- end }}
+            {{- if $root.Values.databaseTLS.caSecretName }}
+            - { name: PGSSLROOTCERT, value: /run/db-ca/ca.crt }
+            {{- end }}
+            {{- if and $isolated (eq $name "worker") }}
+            - { name: AWS_SECRETS_INVENTORY_MODE, value: {{ $root.Values.config.awsSecretsInventoryMode | quote }} }
+            - { name: AWS_USAGE_LOOKUP_MODE, value: {{ $root.Values.config.awsUsageLookupMode | quote }} }
+            - { name: SECRET_MANAGER_ALLOWED_REFERENCES, value: {{ join "," $root.Values.config.secretManagerAllowedReferences | quote }} }
+            {{- end }}
+            {{- if eq $name "api" }}
+            - { name: API_BIND, value: "0.0.0.0:8080" }
+            - { name: TLS_CERT_FILE, value: /run/api-tls/tls.crt }
+            - { name: TLS_KEY_FILE, value: /run/api-tls/tls.key }
+            - { name: AWS_SECRETS_INVENTORY_MODE, value: {{ $root.Values.config.awsSecretsInventoryMode | quote }} }
+            - { name: AWS_USAGE_LOOKUP_MODE, value: {{ $root.Values.config.awsUsageLookupMode | quote }} }
+            - { name: AWS_ONBOARDING_TEMPLATE_URL, value: {{ $root.Values.config.onboardingTemplateURL | quote }} }
+            - { name: ACTION_ROTATION_ENABLED, value: {{ $root.Values.config.rotationExecutionEnabled | quote }} }
+            - { name: ACTION_EXECUTION_ENABLED, value: {{ $root.Values.config.actionExecutionEnabled | quote }} }
+            - { name: ACTION_DELETION_ENABLED, value: {{ $root.Values.config.actionDeletionEnabled | quote }} }
+            - { name: ROTATION_SECRET_ARNS, value: {{ join "," $root.Values.config.rotationSecretArns | quote }} }
+            - { name: SECRET_MANAGER_ALLOWED_REFERENCES, value: {{ join "," $root.Values.config.secretManagerAllowedReferences | quote }} }
+            {{- end }}
+            {{- if or (eq $name "api") (and $isolated $isWorker) }}
+            - { name: OIDC_ISSUER_URL, value: {{ $root.Values.auth.oidc.issuerURL | quote }} }
+            - { name: OIDC_JWKS_URL, value: {{ $root.Values.auth.oidc.jwksURL | default "" | quote }} }
+            - { name: OIDC_AUDIENCE, value: {{ $root.Values.auth.oidc.audience | quote }} }
+            - { name: OIDC_GROUPS_CLAIM, value: {{ $root.Values.auth.oidc.groupsClaim | quote }} }
+            - { name: OIDC_VIEWER_GROUP, value: {{ $root.Values.auth.oidc.groups.viewer | quote }} }
+            - { name: OIDC_ANALYST_GROUP, value: {{ $root.Values.auth.oidc.groups.analyst | quote }} }
+            - { name: OIDC_REMEDIATOR_GROUP, value: {{ $root.Values.auth.oidc.groups.remediator | quote }} }
+            - { name: OIDC_ADMIN_GROUP, value: {{ $root.Values.auth.oidc.groups.admin | quote }} }
+            {{- end }}
+            {{- if $isWorker }}
+            - { name: ACTION_ROTATION_ENABLED, value: {{ and $isolated (eq $name "remediator") $root.Values.config.rotationExecutionEnabled | quote }} }
+            {{- if eq $name "remediator" }}
+            - { name: ROTATION_SECRET_ARNS, value: {{ join "," $root.Values.config.rotationSecretArns | quote }} }
+            {{- end }}
+            - { name: WORKER_HEARTBEAT_FILE, value: /tmp/cremore-worker.heartbeat }
+            {{- if eq $name "worker" }}
+            {{- /* Task-runner processes of the scanning worker; remediator and control keep one loop. */}}
+            - { name: WORKER_CONCURRENCY, value: {{ $root.Values.config.workerConcurrency | quote }} }
+            {{- end }}
+            {{- if $vaultConnections }}
+            - { name: VAULT_CONNECTION_TOKEN_DIR, value: "/run/cremore-vault-connections" }
+            {{- end }}
+            {{- end }}
+            {{- end }}
+          volumeMounts:
+            - { name: runtime-tmp, mountPath: /tmp }
+            {{- if and $isolated (ne $name "web") }}
+            - { name: recipient-policy, mountPath: /run/cremore-recipients, readOnly: true }
+            - { name: approval-public-key, mountPath: /run/cremore-approval, readOnly: true }
+            {{- if has $name (list "worker" "remediator") }}
+            - { name: credential-private-keys, mountPath: /run/cremore-private, readOnly: true }
+            {{- end }}
+            {{- end }}
+            {{- if and (ne $name "web") $root.Values.aws.rolesAnywhere.enabled }}
+            - { name: aws-roles-anywhere, mountPath: /run/cremore-roles-anywhere, readOnly: true }
+            {{- else if and (ne $name "web") $root.Values.aws.webIdentity.enabled }}
+            - { name: aws-web-identity, mountPath: /run/cremore-aws-identity, readOnly: true }
+            {{- end }}
+            {{- if and $isWorker $cloud $root.Values.gcp.adcSecretName }}
+            - { name: gcp-adc, mountPath: /run/gcp, readOnly: true }
+            {{- end }}
+            {{- if and (ne $name "web") $root.Values.databaseTLS.caSecretName }}
+            - { name: database-ca, mountPath: /run/db-ca, readOnly: true }
+            {{- end }}
+            {{- if eq $name "api" }}
+            - { name: api-tls, mountPath: /run/api-tls, readOnly: true }
+            {{- end }}
+            {{- if eq $name "web" }}
+            - { name: internal-ca, mountPath: /run/internal-ca, readOnly: true }
+            {{- end }}
+            {{- if and $needsStore (eq $root.Values.secretStore.authMode "kubernetes") }}
+            - { name: vault-workload-token, mountPath: /run/cremore-vault, readOnly: true }
+            {{- end }}
+            {{- if $vaultConnections }}
+            - { name: vault-connection-tokens, mountPath: /run/cremore-vault-connections, readOnly: true }
+            {{- end }}
+          {{- if $isWorker }}
+          {{- /* The worker has no HTTP port: liveness is the freshness of its heartbeat file. */}}
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import os,sys,time;p='/tmp/cremore-worker.heartbeat';sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os,sys,time;p='/tmp/cremore-worker.heartbeat';sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<120 else 1)"]
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 4
+          {{- else }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              {{- if eq $name "api" }}
+              scheme: HTTPS
+              {{- end }}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              {{- if eq $name "api" }}
+              scheme: HTTPS
+              {{- end }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          {{- end }}
+          resources: {{ toYaml (index $root.Values.resources (ternary "worker" $name $isWorker)) | nindent 12 }}
+        {{- if eq $name "web" }}
+        - name: oauth2-proxy
+          image: {{ $root.Values.auth.oidc.oauth2Proxy.image | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url={{ $root.Values.auth.oidc.issuerURL }}
+            - --client-id={{ $root.Values.auth.oidc.clientID }}
+            - --client-secret-file=/run/oidc/client-secret
+            - --scope={{ join " " $root.Values.auth.oidc.scopes }}
+            - --email-domain=*
+            - --upstream=http://127.0.0.1:3000
+            - --https-address=0.0.0.0:4443
+            - --tls-cert-file=/run/web-tls/tls.crt
+            - --tls-key-file=/run/web-tls/tls.key
+            - --redirect-url=https://{{ $root.Values.ingress.host }}/oauth2/callback
+            - --reverse-proxy=true
+            - --pass-authorization-header=true
+            - --skip-provider-button=true
+            - --skip-auth-route=POST=^/api/v1/hooks/notion/[0-9a-f-]{36}$
+            - --cookie-secure=true
+            - --cookie-httponly=true
+            - --cookie-samesite=lax
+            - --cookie-name=__Host-cremore_session
+            - --cookie-path=/
+            - --cookie-csrf-per-request=true
+            - --cookie-csrf-per-request-limit=5
+            - --cookie-csrf-expire=5m
+            - --cookie-refresh={{ $root.Values.auth.oidc.oauth2Proxy.cookieRefresh }}
+            - --cookie-expire={{ $root.Values.auth.oidc.oauth2Proxy.cookieExpire }}
+            - --silence-ping-logging=true
+            # OAuth callback query strings contain one-time authorization codes.
+            - --request-logging=false
+          env:
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.auth.oidc.secret.name }}
+                  key: {{ $root.Values.auth.oidc.secret.cookieSecretKey }}
+          ports:
+            - { name: oauth-https, containerPort: 4443 }
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: oidc-secrets, mountPath: /run/oidc, readOnly: true }
+            - { name: web-tls, mountPath: /run/web-tls, readOnly: true }
+            - { name: oauth-tmp, mountPath: /tmp }
+          readinessProbe: { httpGet: { path: /ping, port: oauth-https, scheme: HTTPS }, initialDelaySeconds: 3, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /ping, port: oauth-https, scheme: HTTPS }, initialDelaySeconds: 10, periodSeconds: 15 }
+          resources: {{ toYaml $root.Values.resources.oauth2Proxy | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: runtime-tmp
+          emptyDir: { {{ if $isolated }}medium: Memory, {{ end }}sizeLimit: 64Mi }
+        {{- if and $isolated (ne $name "web") }}
+        - name: recipient-policy
+          configMap: { name: {{ $root.Values.isolation.publicKeysConfigMap }}, defaultMode: 0444 }
+        - name: approval-public-key
+          configMap: { name: {{ $root.Values.isolation.approvalPublicKeyConfigMap }}, defaultMode: 0444 }
+        {{- if has $name (list "worker" "remediator") }}
+        - name: credential-private-keys
+          secret:
+            secretName: {{ ternary $root.Values.isolation.collectorPrivateKeysSecret $root.Values.isolation.remediatorPrivateKeysSecret (eq $name "worker") }}
+            defaultMode: 0440
+            items: [{ key: private-keys.json, path: private-keys.json }]
+        {{- end }}
+        {{- end }}
+        {{- if and (ne $name "web") $root.Values.aws.rolesAnywhere.enabled }}
+        - name: aws-roles-anywhere
+          secret:
+            secretName: {{ $root.Values.aws.rolesAnywhere.secretName | quote }}
+            defaultMode: 0440
+        {{- else if and (ne $name "web") $root.Values.aws.webIdentity.enabled }}
+        - name: aws-web-identity
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  audience: {{ $root.Values.aws.webIdentity.audience | quote }}
+                  expirationSeconds: {{ $root.Values.aws.webIdentity.expirationSeconds }}
+                  path: token
+        {{- end }}
+        {{- if and $isWorker $cloud $root.Values.gcp.adcSecretName }}
+        - name: gcp-adc
+          secret:
+            secretName: {{ $root.Values.gcp.adcSecretName | quote }}
+            defaultMode: 0440
+            items:
+              - { key: {{ $root.Values.gcp.adcSecretKey | quote }}, path: adc.json }
+        {{- end }}
+        {{- if and (ne $name "web") $root.Values.databaseTLS.caSecretName }}
+        - name: database-ca
+          secret:
+            secretName: {{ $root.Values.databaseTLS.caSecretName }}
+            defaultMode: 0440
+            items:
+              - { key: {{ $root.Values.databaseTLS.caSecretKey }}, path: ca.crt }
+        {{- end }}
+        {{- if eq $name "api" }}
+        - name: api-tls
+          secret: { secretName: {{ $root.Values.internalTLS.apiSecretName }}, defaultMode: 0440 }
+        {{- end }}
+        {{- if eq $name "web" }}
+        - name: internal-ca
+          secret:
+            secretName: {{ $root.Values.internalTLS.caSecretName }}
+            defaultMode: 0440
+            items:
+              - { key: {{ $root.Values.internalTLS.caSecretKey }}, path: ca.crt }
+        {{- end }}
+        {{- if eq $name "web" }}
+        - name: oidc-secrets
+          secret:
+            secretName: {{ $root.Values.auth.oidc.secret.name }}
+            defaultMode: 0440
+            items:
+              - { key: {{ $root.Values.auth.oidc.secret.clientSecretKey }}, path: client-secret }
+        - name: oauth-tmp
+          emptyDir: { sizeLimit: 32Mi }
+        - name: web-tls
+          secret: { secretName: {{ $root.Values.internalTLS.webSecretName }}, defaultMode: 0440 }
+        {{- end }}
+        {{- if and $needsStore (eq $root.Values.secretStore.authMode "kubernetes") }}
+        - name: vault-workload-token
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: {{ $root.Values.secretStore.kubernetes.audience | quote }}
+                  expirationSeconds: {{ $root.Values.secretStore.kubernetes.tokenExpirationSeconds }}
+        {{- end }}
+        {{- if $vaultConnections }}
+        {{- /* One audience-bound token per external Vault cluster; never the
+               installation's own secret-store token, which lives elsewhere. */}}
+        - name: vault-connection-tokens
+          projected:
+            defaultMode: 0440
+            sources:
+              {{- range $token := $root.Values.vaultConnections.tokens }}
+              - serviceAccountToken:
+                  path: {{ $token.name }}
+                  audience: {{ $token.audience | quote }}
+                  expirationSeconds: {{ $root.Values.vaultConnections.expirationSeconds }}
+              {{- end }}
+        {{- end }}
+{{- end }}

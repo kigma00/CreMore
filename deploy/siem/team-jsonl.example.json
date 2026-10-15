@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": ["team_jsonl"],
+  "destinations": [
+    {"id": "soc_team", "provider": "team_jsonl", "options": {}}
+  ]
+}

@@ -1,0 +1,481 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Separate scanner, optional vault value-reader and optional remediation roles for a single-account deployment.
+Parameters:
+  ScannerWorkloadPrincipalArn:
+    Type: String
+    AllowedPattern: '^arn:aws(-[a-z]+)*:iam::[0-9]{12}:(role|user)/[A-Za-z0-9+=,.@_/-]{1,512}$'
+    Description: Exact IAM role or user ARN; account roots, wildcards and STS session ARNs are not accepted.
+  ScannerRoleName:
+    Type: String
+    Default: CredentialExposureScannerRole
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+  RemediationWorkloadPrincipalArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws(-[a-z]+)*:iam::[0-9]{12}:(role|user)/[A-Za-z0-9+=,.@_/-]{1,512}$'
+    Description: Exact IAM role or user ARN when remediation is enabled; leave empty otherwise.
+  RemediationRoleName:
+    Type: String
+    Default: CredentialExposureRemediationRole
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+  EnableRemediation:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  EnableDeleteRemediation:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  CloudTrailLakeEventDataStoreArn:
+    Type: String
+    Default: ''
+    Description: Optional exact event data store ARN. Lake queries remain disabled when empty.
+  EnableControlTowerContext:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: Enable only when this approved runtime account is the Control Tower management account.
+  ExternalId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9+=,.@:/_-]{16,128}$'
+    Description: >-
+      EnableVaultValueRead=true only: the ExternalId CreMore registered for this account. The value-reader role
+      trusts the scanner role only with it; the scanner role's own trust is unchanged.
+  EnableVaultValueRead:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+    Description: >-
+      Also create the value-reader role for vault comparison. Only the scanner role of this stack may assume it,
+      with the ExternalId; it reads the values of the secrets and Parameter Store paths listed below. The scanner
+      role itself still reads no value.
+  VaultValueReaderRoleName:
+    Type: String
+    Default: CredentialVaultValueReaderRole
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+    Description: IAM role name of the value-reader role (EnableVaultValueRead=true only).
+  VaultSecretArns:
+    Type: CommaDelimitedList
+    Default: ''
+    AllowedPattern: '^$|^arn:(aws|aws-us-gov|aws-cn|aws-eusc):secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}$'
+    Description: Exact Secrets Manager secret ARNs, with their six-character suffix, whose values the role may read.
+  VaultParameterPathArns:
+    Type: CommaDelimitedList
+    Default: ''
+    AllowedPattern: '^$|^arn:aws(-[a-z]+)*:ssm:([a-z0-9-]+|[*]):[0-9]{12}:parameter(/[A-Za-z0-9_.-]+)+(/[*])?$'
+    Description: >-
+      Parameter Store path ARNs GetParametersByPath may read, such as arn:aws:ssm:us-east-1:123456789012:parameter/prod
+      and arn:aws:ssm:us-east-1:123456789012:parameter/prod/*. IAM authorizes that call on the requested path.
+  VaultKmsKeyArns:
+    Type: CommaDelimitedList
+    Default: ''
+    AllowedPattern: '^$|^arn:aws(-[a-z]+)*:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$'
+    Description: >-
+      Optional customer-managed KMS key ARNs of those secrets and parameters. The role may decrypt with them only
+      through Secrets Manager or Parameter Store (kms:ViaService).
+Conditions:
+  RemediationEnabled: !Equals [!Ref EnableRemediation, 'true']
+  DeleteEnabled: !And [!Condition RemediationEnabled, !Equals [!Ref EnableDeleteRemediation, 'true']]
+  HasCloudTrailLake: !Not [!Equals [!Ref CloudTrailLakeEventDataStoreArn, '']]
+  ControlTowerContextEnabled: !Equals [!Ref EnableControlTowerContext, 'true']
+  VaultValueReadEnabled: !Equals [!Ref EnableVaultValueRead, 'true']
+  # An empty list never makes an empty or wildcard statement: its policy is left out.
+  HasVaultSecretArns: !And [!Condition VaultValueReadEnabled, !Not [!Equals [!Join ['', !Ref VaultSecretArns], '']]]
+  HasVaultParameterPathArns: !And [!Condition VaultValueReadEnabled, !Not [!Equals [!Join ['', !Ref VaultParameterPathArns], '']]]
+  HasVaultKmsKeyArns: !And [!Condition VaultValueReadEnabled, !Not [!Equals [!Join ['', !Ref VaultKmsKeyArns], '']]]
+Rules:
+  # This template's scanner role has no ExternalId of its own; the value reader's trust needs one.
+  VaultValueReadRequiresExternalId:
+    RuleCondition: !Equals [!Ref EnableVaultValueRead, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ExternalId, '']]
+        AssertDescription: EnableVaultValueRead requires the ExternalId CreMore registered for this account.
+Resources:
+  ScannerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref ScannerRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref ScannerWorkloadPrincipalArn }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ScannerMutationDeny
+          PolicyDocument: {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "DenyScannerSourceMutation",
+                  "Effect": "Deny",
+                  "Action": [
+                    "s3:Put*",
+                    "s3:Delete*",
+                    "s3:Create*",
+                    "s3:Update*",
+                    "s3:Replicate*",
+                    "s3:RestoreObject",
+                    "s3:AbortMultipartUpload",
+                    "s3:BypassGovernanceRetention",
+                    "s3:InitiateReplication",
+                    "s3:PauseReplication",
+                    "s3:Write*",
+                    "iam:Add*",
+                    "iam:Attach*",
+                    "iam:Change*",
+                    "iam:Create*",
+                    "iam:Deactivate*",
+                    "iam:Delete*",
+                    "iam:Detach*",
+                    "iam:Enable*",
+                    "iam:PassRole",
+                    "iam:Put*",
+                    "iam:Remove*",
+                    "iam:Reset*",
+                    "iam:Resync*",
+                    "iam:Set*",
+                    "iam:Tag*",
+                    "iam:Untag*",
+                    "iam:Update*",
+                    "iam:Upload*",
+                    "secretsmanager:Create*",
+                    "secretsmanager:Delete*",
+                    "secretsmanager:Put*",
+                    "secretsmanager:Update*",
+                    "secretsmanager:Rotate*",
+                    "secretsmanager:Restore*",
+                    "secretsmanager:Replicate*",
+                    "secretsmanager:Remove*",
+                    "secretsmanager:Stop*",
+                    "secretsmanager:CancelRotateSecret",
+                    "secretsmanager:Tag*",
+                    "secretsmanager:Untag*",
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:BatchGetSecretValue",
+                    "cloudtrail:Create*",
+                    "cloudtrail:Update*",
+                    "cloudtrail:Delete*",
+                    "cloudtrail:Put*",
+                    "cloudtrail:StartLogging",
+                    "cloudtrail:StopLogging",
+                    "cloudtrail:AddTags",
+                    "cloudtrail:RemoveTags",
+                    "cloudtrail:RestoreEventDataStore",
+                    "cloudtrail:EnableFederation",
+                    "cloudtrail:DisableFederation",
+                    "cloudtrail:StartEventDataStoreIngestion",
+                    "cloudtrail:StopEventDataStoreIngestion",
+                    "cloudtrail:StartImport",
+                    "cloudtrail:StopImport",
+                    "cloudtrail:RegisterOrganizationDelegatedAdmin",
+                    "cloudtrail:DeregisterOrganizationDelegatedAdmin",
+                    "events:Put*",
+                    "events:Create*",
+                    "events:Update*",
+                    "events:Delete*",
+                    "events:Remove*",
+                    "events:EnableRule",
+                    "events:DisableRule",
+                    "sqs:CreateQueue",
+                    "sqs:DeleteQueue",
+                    "sqs:PurgeQueue",
+                    "sqs:SetQueueAttributes",
+                    "sqs:AddPermission",
+                    "sqs:RemovePermission",
+                    "kms:Create*",
+                    "kms:Delete*",
+                    "kms:Disable*",
+                    "kms:Enable*",
+                    "kms:Put*",
+                    "kms:Update*",
+                    "kms:Schedule*",
+                    "kms:CancelKeyDeletion",
+                    "kms:Tag*",
+                    "kms:Untag*",
+                    "kms:RevokeGrant",
+                    "kms:RetireGrant",
+                    "kms:ImportKeyMaterial",
+                    "kms:ReplicateKey"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+        - PolicyName: ReadOnlyExposureScan
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:ListAllMyBuckets, s3:GetBucketLocation, iam:GetAccessKeyLastUsed, iam:ListUsers, iam:GenerateCredentialReport, iam:GetCredentialReport, iam:SimulatePrincipalPolicy, iam:ListUserPolicies, iam:GetUserPolicy, iam:ListAttachedUserPolicies, iam:ListGroupsForUser, iam:ListGroupPolicies, iam:GetGroupPolicy, iam:ListAttachedGroupPolicies, iam:GetRole, iam:ListRolePolicies, iam:GetRolePolicy, iam:ListAttachedRolePolicies, iam:GetPolicy, iam:GetPolicyVersion, sts:GetCallerIdentity, cloudtrail:LookupEvents, ec2:DescribeRegions]
+                Resource: '*'
+              # Whether a bucket is public, and who can read where a credential was found (as member-account-role.yaml).
+              - Effect: Allow
+                Action: [s3:ListBucket, s3:ListBucketVersions, s3:GetBucketVersioning, s3:GetBucketTagging,
+                         s3:GetBucketPolicyStatus, s3:GetBucketPublicAccessBlock, s3:GetBucketPolicy, s3:GetBucketAcl]
+                Resource: !Sub "arn:${AWS::Partition}:s3:::*"
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion, s3:GetObjectTagging, s3:GetObjectAcl]
+                Resource: !Sub "arn:${AWS::Partition}:s3:::*/*"
+              - Effect: Allow
+                Action: [iam:ListAccessKeys, iam:ListServiceSpecificCredentials, iam:GetUser, iam:ListUserTags]
+                Resource: !Sub "arn:${AWS::Partition}:iam::*:user/*"
+              # Whether a key's policy lets IAM policies grant its use (as member-account-role.yaml).
+              - Effect: Allow
+                Action: kms:GetKeyPolicy
+                Resource: !Sub "arn:${AWS::Partition}:kms:*:${AWS::AccountId}:key/*"
+        - !If
+          - HasCloudTrailLake
+          - PolicyName: QueryConfiguredCloudTrailLake
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: cloudtrail:StartQuery
+                  Resource: !Ref CloudTrailLakeEventDataStoreArn
+                - Effect: Allow
+                  Action: cloudtrail:GetQueryResults
+                  Resource: '*'
+          - !Ref AWS::NoValue
+        - !If
+          - ControlTowerContextEnabled
+          - PolicyName: ControlTowerInventoryContext
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: [controltower:ListBaselines, controltower:ListEnabledBaselines, controltower:GetEnabledBaseline]
+                  Resource: '*'
+          - !Ref AWS::NoValue
+        - !If
+          - VaultValueReadEnabled
+          # The scanner session reads no value; for vault comparison it may become this account's value reader.
+          - PolicyName: AssumeVaultValueReader
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: sts:AssumeRole
+                  Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${VaultValueReaderRoleName}
+          - !Ref AWS::NoValue
+  VaultValueReaderRole:
+    Type: AWS::IAM::Role
+    Condition: VaultValueReadEnabled
+    Properties:
+      RoleName: !Ref VaultValueReaderRoleName
+      # Reached only by role chaining from the scanner session, which AWS caps at one hour.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !GetAtt ScannerRole.Arn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      Policies:
+        # The scanner's mutation deny without GetSecretValue, the value reads CreMore does not use and Parameter Store changes.
+        - PolicyName: VaultValueReaderDeny
+          PolicyDocument: {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "DenyValueReaderMutationAndUnusedReads",
+                  "Effect": "Deny",
+                  "Action": [
+                    "s3:Put*",
+                    "s3:Delete*",
+                    "s3:Create*",
+                    "s3:Update*",
+                    "s3:Replicate*",
+                    "s3:RestoreObject",
+                    "s3:AbortMultipartUpload",
+                    "s3:BypassGovernanceRetention",
+                    "s3:InitiateReplication",
+                    "s3:PauseReplication",
+                    "s3:Write*",
+                    "iam:Add*",
+                    "iam:Attach*",
+                    "iam:Change*",
+                    "iam:Create*",
+                    "iam:Deactivate*",
+                    "iam:Delete*",
+                    "iam:Detach*",
+                    "iam:Enable*",
+                    "iam:PassRole",
+                    "iam:Put*",
+                    "iam:Remove*",
+                    "iam:Reset*",
+                    "iam:Resync*",
+                    "iam:Set*",
+                    "iam:Tag*",
+                    "iam:Untag*",
+                    "iam:Update*",
+                    "iam:Upload*",
+                    "secretsmanager:Create*",
+                    "secretsmanager:Delete*",
+                    "secretsmanager:Put*",
+                    "secretsmanager:Update*",
+                    "secretsmanager:Rotate*",
+                    "secretsmanager:Restore*",
+                    "secretsmanager:Replicate*",
+                    "secretsmanager:Remove*",
+                    "secretsmanager:Stop*",
+                    "secretsmanager:CancelRotateSecret",
+                    "secretsmanager:Tag*",
+                    "secretsmanager:Untag*",
+                    "secretsmanager:BatchGetSecretValue",
+                    "ssm:GetParameter",
+                    "ssm:GetParameters",
+                    "ssm:GetParameterHistory",
+                    "ssm:PutParameter",
+                    "ssm:DeleteParameter*",
+                    "ssm:LabelParameterVersion",
+                    "ssm:UnlabelParameterVersion",
+                    "ssm:AddTagsToResource",
+                    "ssm:RemoveTagsFromResource",
+                    "ssm:PutResourcePolicy",
+                    "ssm:DeleteResourcePolicy",
+                    "cloudtrail:Create*",
+                    "cloudtrail:Update*",
+                    "cloudtrail:Delete*",
+                    "cloudtrail:Put*",
+                    "cloudtrail:StartLogging",
+                    "cloudtrail:StopLogging",
+                    "cloudtrail:AddTags",
+                    "cloudtrail:RemoveTags",
+                    "cloudtrail:RestoreEventDataStore",
+                    "cloudtrail:EnableFederation",
+                    "cloudtrail:DisableFederation",
+                    "cloudtrail:StartEventDataStoreIngestion",
+                    "cloudtrail:StopEventDataStoreIngestion",
+                    "cloudtrail:StartImport",
+                    "cloudtrail:StopImport",
+                    "cloudtrail:RegisterOrganizationDelegatedAdmin",
+                    "cloudtrail:DeregisterOrganizationDelegatedAdmin",
+                    "events:Put*",
+                    "events:Create*",
+                    "events:Update*",
+                    "events:Delete*",
+                    "events:Remove*",
+                    "events:EnableRule",
+                    "events:DisableRule",
+                    "sqs:CreateQueue",
+                    "sqs:DeleteQueue",
+                    "sqs:PurgeQueue",
+                    "sqs:SetQueueAttributes",
+                    "sqs:AddPermission",
+                    "sqs:RemovePermission",
+                    "kms:Create*",
+                    "kms:Delete*",
+                    "kms:Disable*",
+                    "kms:Enable*",
+                    "kms:Put*",
+                    "kms:Update*",
+                    "kms:Schedule*",
+                    "kms:CancelKeyDeletion",
+                    "kms:Tag*",
+                    "kms:Untag*",
+                    "kms:RevokeGrant",
+                    "kms:RetireGrant",
+                    "kms:ImportKeyMaterial",
+                    "kms:ReplicateKey"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+        # The allow below is only the role's own policy: a secret whose resource policy lets the
+        # organization in (Principal "*" with aws:PrincipalOrgID) would still be readable without this deny.
+        - PolicyName: VaultValueReaderListedSecretsOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - !If
+                - HasVaultSecretArns
+                - Effect: Deny
+                  Action: [secretsmanager:GetSecretValue, secretsmanager:DescribeSecret, secretsmanager:ListSecretVersionIds]
+                  NotResource: !Ref VaultSecretArns
+                - Effect: Deny
+                  Action: [secretsmanager:GetSecretValue, secretsmanager:DescribeSecret, secretsmanager:ListSecretVersionIds]
+                  Resource: '*'
+        - !If
+          - HasVaultSecretArns
+          - PolicyName: ReadListedSecretValues
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                    - secretsmanager:DescribeSecret
+                    - secretsmanager:ListSecretVersionIds
+                  Resource: !Ref VaultSecretArns
+          - !Ref AWS::NoValue
+        - !If
+          - HasVaultParameterPathArns
+          - PolicyName: ReadListedParameterPaths
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: ssm:GetParametersByPath
+                  Resource: !Ref VaultParameterPathArns
+          - !Ref AWS::NoValue
+        - !If
+          - HasVaultKmsKeyArns
+          - PolicyName: DecryptThroughSecretStores
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: kms:Decrypt
+                  Resource: !Ref VaultKmsKeyArns
+                  # Only a decryption Secrets Manager or Parameter Store asks for; never an arbitrary ciphertext.
+                  Condition:
+                    StringLike:
+                      kms:ViaService:
+                        - secretsmanager.*.amazonaws.com
+                        - ssm.*.amazonaws.com
+                        - secretsmanager.*.amazonaws.com.cn
+                        - ssm.*.amazonaws.com.cn
+          - !Ref AWS::NoValue
+  RemediationRole:
+    Type: AWS::IAM::Role
+    Condition: RemediationEnabled
+    Properties:
+      RoleName: !Ref RemediationRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref RemediationWorkloadPrincipalArn }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AccessKeyRemediationOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [iam:ListAccessKeys, iam:GetUser, iam:UpdateAccessKey]
+                Resource: !Sub "arn:${AWS::Partition}:iam::*:user/*"
+              - !If
+                - DeleteEnabled
+                - Effect: Allow
+                  Action: iam:DeleteAccessKey
+                  Resource: !Sub "arn:${AWS::Partition}:iam::*:user/*"
+                - !Ref AWS::NoValue
+              - Effect: Allow
+                Action: [sts:GetCallerIdentity, iam:GetAccessKeyLastUsed]
+                Resource: '*'
+Outputs:
+  ScannerRoleArn: { Value: !GetAtt ScannerRole.Arn }
+  RemediationRoleArn:
+    Condition: RemediationEnabled
+    Value: !GetAtt RemediationRole.Arn
+  VaultValueReaderRoleArn:
+    Condition: VaultValueReadEnabled
+    Value: !GetAtt VaultValueReaderRole.Arn

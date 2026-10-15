@@ -1,0 +1,16 @@
+# AWS through an IAM role that trusts your IdP (AssumeRoleWithWebIdentity). Add after
+# refresher.yml. The SDK reads AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE; no host
+# credential files and no instance metadata are used.
+services:
+  api:
+    environment: &aws-web-identity
+      AWS_ROLE_ARN: ${AWS_ROLE_ARN:?set the IAM role ARN that trusts your IdP}
+      AWS_WEB_IDENTITY_TOKEN_FILE: /run/cremore-identity/cloud/${AWS_WEB_IDENTITY_TOKEN_NAME:-aws}
+      AWS_ROLE_SESSION_NAME: cremore
+      AWS_PROFILE: ""
+      AWS_CONFIG_FILE: /dev/null
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_SSO_DISCOVERY_MODE: disabled
+  worker:
+    environment: *aws-web-identity

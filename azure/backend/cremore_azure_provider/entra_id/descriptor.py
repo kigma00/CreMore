@@ -1,0 +1,30 @@
+"""Entra ID user status onboarding contract; importing it performs no collection."""
+
+DESCRIPTOR = {
+    "provider": "entra_id",
+    "label": "Microsoft Entra ID (users)",
+    "purpose": ["identity_status"],
+    "identity_role": "idp",
+    "editions": ["cloud"],
+    "origins": ["https://graph.microsoft.com", "https://graph.microsoft.us",
+                "https://dod-graph.microsoft.us", "https://microsoftgraph.chinacloudapi.cn"],
+    "origin_hint": "https://graph.microsoft.com",
+    "tenant": "confirmed_directory",
+    "auth_types": ["workload_identity", "private_key_jwt"],
+    "auth_secret_roles": {"workload_identity": [], "private_key_jwt": ["client_id", "private_key", "tenant_id"]},
+    "scope_kinds": ["organization"],
+    "capabilities": ["identity_status"],
+    "modes": ["inventory"],
+    "options": ["page_size"],
+    "defaults": {"options": {"page_size": 999}},
+    "required_permissions": ["User.Read.All (application)"],
+    "native_export": False,
+    "compare": False,
+    "recollect": False,
+    "limitations": [
+        "APPLICATION_PERMISSION_USER_READ_ALL_ONLY",
+        "EMAILS_AND_LOGINS_ARE_KEPT_ONLY_AS_KEYED_DIGESTS",
+        "GRAPH_KEEPS_NO_TIME_FOR_A_DISABLE",
+        "DELETED_USERS_ARE_LISTED_FOR_30_DAYS",
+    ],
+}

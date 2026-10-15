@@ -1,0 +1,31 @@
+# Add to docker-compose.yml. The directory contains roles-anywhere.json, the
+# profile below, certificate.pem and private.pem; rotate the directory's files
+# atomically, not the mounted directory. Never mount credentials in the web UI.
+services:
+  api:
+    environment: &roles-anywhere
+      AWS_PROFILE: cremore-roles-anywhere
+      AWS_CONFIG_FILE: /run/cremore-roles-anywhere/aws-config
+      AWS_SHARED_CREDENTIALS_FILE: /dev/null
+      AWS_ROLES_ANYWHERE_CONFIG: /run/cremore-roles-anywhere/roles-anywhere.json
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_SSO_DISCOVERY_MODE: disabled
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_SESSION_TOKEN: ""
+      AWS_ROLE_ARN: ""
+      AWS_WEB_IDENTITY_TOKEN_FILE: ""
+    volumes: &roles-anywhere-mounts
+      - type: bind
+        source: ${AWS_ROLES_ANYWHERE_DIRECTORY:?set an absolute protected Roles Anywhere directory}
+        target: /run/cremore-roles-anywhere
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${AWS_SIGNING_HELPER_PATH:?set an absolute verified AWS signing helper path}
+        target: /opt/aws_signing_helper
+        read_only: true
+        bind: {create_host_path: false}
+  worker:
+    environment: *roles-anywhere
+    volumes: *roles-anywhere-mounts

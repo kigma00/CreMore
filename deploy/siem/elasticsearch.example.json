@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {
+      "id": "elastic",
+      "provider": "http_json",
+      "options": {
+        "endpoint": "https://elasticsearch.internal.example:9200/cremore-events/_create/{event_id}",
+        "token_env": "ELASTIC_API_KEY",
+        "authorization_scheme": "ApiKey",
+        "conflict_is_duplicate": true
+      }
+    }
+  ]
+}

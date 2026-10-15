@@ -1,0 +1,7 @@
+# Browser-only local access. API and worker remain reachable inside Compose,
+# without competing with other host services for diagnostic ports.
+services:
+  api:
+    ports: !reset []
+  worker:
+    ports: !reset []

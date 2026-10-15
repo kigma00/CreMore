@@ -1,0 +1,48 @@
+# Replace the image with the image built from this checkout (prefer a digest).
+# Create the ServiceAccount, ConfigMap and Secret described in README.md first.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cremore-coverage
+spec:
+  schedule: "17 */6 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          serviceAccountName: cremore-coverage
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: collector
+              image: cremore-python:0.1.0
+              command: ["cremore-coverage"]
+              args: ["--api-url", "$(CREMORE_API_URL)", "--connection-id", "$(CREMORE_CONNECTION_ID)"]
+              envFrom:
+                - configMapRef:
+                    name: cremore-coverage
+                - secretRef:
+                    name: cremore-coverage
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi

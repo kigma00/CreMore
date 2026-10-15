@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "poll_seconds": 5.0,
+  "batch_size": 100,
+  "allow_plugins": [],
+  "destinations": [
+    {
+      "id": "datadog",
+      "provider": "http_json",
+      "options": {
+        "endpoint": "https://http-intake.logs.datadoghq.com/api/v2/logs",
+        "api_key_header": {"name": "DD-API-KEY", "value_env": "DD_API_KEY"}
+      }
+    }
+  ]
+}

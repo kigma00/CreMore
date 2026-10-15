@@ -1,0 +1,472 @@
+# Recommended defaults for a Kubernetes install. Ingress, NetworkPolicy, TLS and
+# group layout are your choice. Opt-in isolation also enforces role boundaries.
+
+# api and worker are the same Python image (deploy/docker/python.Dockerfile);
+# the Deployment selects the entrypoint (cremore-api / cremore-worker).
+image:
+  # The release workflow enables this and replaces defaults with signed digests.
+  requireDigest: false
+  api: ghcr.io/y4rvin/cremore-api:0.1.0
+  worker: ghcr.io/y4rvin/cremore-worker:0.1.0
+  web: ghcr.io/y4rvin/cremore-web:0.1.0
+  pullPolicy: IfNotPresent
+
+replicas:
+  api: 2
+  worker: 2
+  web: 2
+  remediator: 1
+  control: 1
+
+workerPod:
+  # The image has no init process. true shares the worker pod's process namespace,
+  # so the pod's pause process is PID 1 and reaps a document-parser child orphaned
+  # when its parser server is killed (otherwise it stays a zombie until the pod
+  # restarts). Leave it false when anything may be injected into the worker pod
+  # (a service-mesh or agent sidecar): with a shared namespace such a container
+  # can read the worker's /proc, its environment included.
+  shareProcessNamespace: false
+
+# Explicit opt-in; migrate credentials and provision restricted database roles first.
+# The worker component is the collector. Remediation and control get their own pods.
+isolation:
+  enabled: false
+  publicKeysConfigMap: cremore-sealing-recipients
+  approvalPublicKeyConfigMap: cremore-approval-verifier
+  collectorPrivateKeysSecret: cremore-collector-keys
+  remediatorPrivateKeysSecret: cremore-remediator-keys
+  controlKeySecret: cremore-control-key
+  databaseSecrets:
+    api: cremore-db-api
+    worker: cremore-db-collector
+    remediator: cremore-db-remediator
+    control: cremore-db-control
+    migrator: cremore-db-migration
+  # Each mapping is a nodeSelector; use different pools/hosts for root-compromise containment.
+  nodeSelectors: { api: {}, worker: {}, remediator: {}, control: {}, siem: {}, migrator: {} }
+  # Exact destination networks and ports. Empty means no external egress.
+  # Provider HTTPS, IdP, SMTP, Vault, identity agents must be deliberately listed per role.
+  egress: { api: [], worker: [], remediator: [], control: [], web: [], siem: [] }
+  remediatorIdentity:
+    aws:
+      webIdentity: { enabled: false, roleArn: "", audience: sts.amazonaws.com, expirationSeconds: 3600 }
+      rolesAnywhere: { enabled: false, secretName: "" }
+    gcp: { adcSecretName: "", adcSecretKey: adc.json, quotaProject: "", oauth: { secretName: "" } }
+    azure:
+      workloadIdentity: { enabled: false, clientId: "", tenantId: "", tokenExpirationSeconds: 3600 }
+  migrationJob:
+    enabled: false
+    # Run deliberately before the rollout, never as an automatic API init container.
+    revision: initial
+
+serviceAccounts:
+  siem:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: false
+  migrator:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: false
+  remediator:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: false
+  control:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: false
+  api:
+    create: true
+    name: ""
+    # On EKS an IRSA annotation (or an externally provisioned Pod Identity)
+    # gives the legacy API its read-only AWS access. In isolation only worker
+    # and remediator may carry cloud identity annotations, with distinct roles.
+    annotations: {}
+    automountServiceAccountToken: false
+  worker:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: false
+  web:
+    create: true
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: false
+
+# Optional pre-existing Google ADC / external-account configuration Secret.
+# Only the worker mounts it. Leave empty when using GKE workload identity.
+aws:
+  # Use one source: EKS IRSA/Pod Identity, generic projected OIDC, or Roles Anywhere.
+  webIdentity:
+    enabled: false
+    roleArn: ""
+    audience: sts.amazonaws.com
+    expirationSeconds: 3600
+  rolesAnywhere:
+    enabled: false
+    # Existing Secret keys: aws-config, roles-anywhere.json, certificate.pem, private.pem.
+    # The API/worker image must include the verified helper named in the JSON.
+    secretName: ""
+
+gcp:
+  adcSecretName: ""
+  adcSecretKey: adc.json
+  quotaProject: ""
+  # Existing Secret, consumed only by API. Worker resolves sealed DB references.
+  oauth:
+    secretName: ""
+    clientIdKey: client-id
+    clientSecretKey: client-secret
+    redirectUri: ""
+
+# Microsoft Entra Workload ID (AKS): the API and worker exchange a projected
+# service-account token for an Entra token. The webhook injects AZURE_CLIENT_ID,
+# AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE, which DefaultAzureCredential
+# reads. Needs the cluster's workload identity add-on and a federated identity
+# credential for each service account (subject
+# system:serviceaccount:<namespace>:<service account>).
+azure:
+  workloadIdentity:
+    enabled: false
+    clientId: ""
+    # Empty uses the tenant the webhook is configured with.
+    tenantId: ""
+    # 3600-86400; the webhook's default is 3600.
+    tokenExpirationSeconds: 3600
+
+# Worker reads of other Vault/OpenBao clusters with each connection's own login
+# (a connection's server_auth, docs/EXTERNAL_VAULT.md). Each entry projects one
+# service-account token bound to that cluster's audience into
+# VAULT_CONNECTION_TOKEN_DIR/<name>; the connection names the file. egress opens
+# the worker to those clusters (Vault listens on 8200 by default).
+vaultConnections:
+  tokens: []
+  #  - name: vault-pay
+  #    audience: vault-pay
+  expirationSeconds: 600
+  egress: []
+  #  - cidr: 10.20.0.0/16
+  #    port: 8200
+
+# Owner contact that CreMore sends itself (Integrations > Other settings > Contact
+# delivery): the API talks to the company's SMTP relay, which NetworkPolicy blocks
+# unless it is listed here (Slack goes over the HTTPS egress above).
+contactDelivery:
+  smtpEgress: []
+  #  - cidr: 10.30.0.25/32
+  #    port: 587
+
+databaseUrlSecret:
+  name: cremore-database
+  key: url
+databaseTLS:
+  # Optional private CA for the database; choose sslmode in the URL.
+  caSecretName: ""
+  caSecretKey: ca.crt
+
+# Existing internal PKI secrets. Certificates must contain the in-cluster
+# Service DNS names and chain to the CA secret used by the web proxy.
+internalTLS:
+  apiSecretName: cremore-api-tls
+  webSecretName: cremore-web-tls
+  caSecretName: cremore-internal-ca
+  caSecretKey: ca.crt
+
+applicationSecret:
+  name: cremore-secrets
+  # Hex-encoded HMAC key. Fingerprints are keyed with it so one installation's
+  # fingerprints cannot be matched against another's. Used by API and worker.
+  fingerprintKey: fingerprint-key
+  # Optional keys in the SAME Secret holding the master that seals stored
+  # connection credentials, hex encoded. Empty derives it from the fingerprint
+  # key, as before; naming a key separates the two, so the fingerprint key --
+  # which must never rotate -- stops being the token master. Rotate by writing
+  # the new master under one key and the old one under sealingKeyPrevious, which
+  # opens stored credentials but seals no new one. An installation running
+  # External Secrets Operator can fill these from its own Vault, so nothing
+  # long-lived is written into the chart. config.sealing below is the other way:
+  # the master stays in AWS KMS and only a ciphertext is held here.
+  sealingKey: ""
+  sealingKeyPrevious: ""
+  # Optional key in the SAME Secret holding the audit trail's MAC key, hex encoded
+  # (32+ bytes). Empty derives it from the fingerprint key. Name one when the
+  # fingerprint key also goes to an external vault's hasher; keep it for the life
+  # of the audit trail, since another key reads every sealed row as changed.
+  auditChainKey: ""
+
+# Optional external secret store (OpenBao/Vault KV v2). A connection stores
+# only a vault://<path> reference; the worker resolves it at scan time.
+secretStore:
+  enabled: false
+  secretName: ""
+  urlKey: url
+  # token preserves existing installs. kubernetes exchanges a short-lived,
+  # audience-bound projected service-account token and renews the Vault lease.
+  authMode: token
+  tokenKey: token
+  # Optional, and only used when config.sealing.vaultPath is set. The API is
+  # wired into the store solely to read the master that seals a credential an
+  # operator types in, so it can log in as a role -- or carry a token -- whose
+  # policy reads that ONE path. The worker keeps the one above, which reads the
+  # connection references. Empty means the API reuses the worker's.
+  sealingTokenKey: ""
+  mount: secret
+  kubernetes:
+    role: ""
+    sealingRole: ""
+    authMount: kubernetes
+    audience: vault
+    tokenExpirationSeconds: 3600
+
+# Optional scanning triggers. Profiles must already exist and be approved in
+# CreMore. These values never create/modify a bucket, trail, rule, or SQS queue.
+scanning:
+  # Each mode ALLOWS its trigger (the default) or hard-locks it off. The switch
+  # itself, and the approved profile events and queue messages bind to, are an
+  # Admin's and live in the dashboard (/api/v1/settings/scan-triggers), where
+  # an Admin can bind a schedule or SQS trigger to an approved scope.
+  # Scheduled scans (a daily full scan of every approved scope at 02:00 KST by
+  # default) and change feeds are on there unless an Admin switches them off,
+  # including after an upgrade; queues stay off until an Admin binds one. Set a
+  # mode to disabled to keep a trigger off whatever the dashboard says.
+  schedulesMode: enabled
+  # Change feeds read what changed in approved repositories and spaces (5 minutes by
+  # default, per provider in the dashboard).
+  changeFeedsMode: enabled
+  # The customer's own Pub/Sub subscription and Service Bus queue or topic
+  # subscription, bound and acknowledged in the dashboard like the SQS queue.
+  pubsub:
+    mode: enabled
+  serviceBus:
+    mode: enabled
+  sqs:
+    mode: enabled
+    # Optional pins, as above. dedicatedAcknowledged=true here permanently
+    # asserts the queue is CreMore's own; otherwise an Admin acknowledges it in
+    # the dashboard, where the assertion is recorded against their name.
+    queueURL: ""
+    profileId: ""
+    dedicatedAcknowledged: false
+  # connectionUUID/bucket -> {manifest_bucket: ..., manifest_key: ...}
+  # Existing S3 Inventory report pointers, not source-bucket configuration.
+  # An Admin binds these in the dashboard (/api/v1/settings/inventory-manifests);
+  # setting any here fixes every binding for the installation.
+  inventoryManifests: {}
+
+auth:
+  oidc:
+    issuerURL: https://idp.example.com
+    jwksURL: "" # Exact external JWKS URL; empty allows issuer origin and Google's canonical keys.
+    audience: cremore
+    clientID: cremore
+    groupsClaim: groups
+    groups:
+      viewer: cremore-viewers
+      analyst: cremore-analysts
+      remediator: cremore-remediators
+      admin: cremore-admins
+    # offline_access asks the IdP for a refresh token. The IdP client must also
+    # permit the refresh_token grant for uninterrupted browser sessions.
+    scopes: [openid, profile, email, groups, offline_access]
+    secret:
+      name: cremore-oidc
+      clientSecretKey: client-secret
+      cookieSecretKey: cookie-secret
+    oauth2Proxy:
+      image: ghcr.io/y4rvin/cremore-oauth2-proxy:0.1.0
+      cookieRefresh: 1h
+      cookieExpire: 8h
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+  host: cremore.example.com
+  tlsSecretName: cremore-tls
+
+networkPolicy:
+  enabled: true
+  ingressNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+  ingressPodSelector:
+    app.kubernetes.io/component: controller
+  # Exact cluster-DNS selectors, matched together (namespace AND pod labels).
+  # Non-empty maps are required. NodeLocalDNS/host-network DNS is not covered.
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system
+  dnsPodSelector:
+    k8s-app: kube-dns
+  databaseCIDR: 0.0.0.0/0
+  # Match the target PostgreSQL service/egress port in databaseUrlSecret.
+  databasePort: 5432
+  # Single-range outbound HTTPS, kept for existing values files.
+  httpsCIDR: 0.0.0.0/0
+  # Preferred: list only the ranges the connected providers actually use, so a
+  # stolen scanner credential cannot be carried to an arbitrary host. This
+  # overrides httpsCIDR when non-empty. NetworkPolicy matches addresses rather
+  # than names, so hostname-level restriction needs an egress proxy or a CNI
+  # with FQDN policy support.
+  httpsEgressCIDRs: []
+  # Opt in only when API/worker ServiceAccounts use EKS Pod Identity.
+  # The Pod Identity association and agent remain cluster-managed resources.
+  eksPodIdentity: false
+
+config:
+  awsRegion: us-east-1
+  # The master that seals stored connection credentials, held by AWS KMS rather
+  # than by the cluster. keyCiphertext is a data key encrypted under kmsKeyId;
+  # it is not a secret, because turning it back into the master needs
+  # kms:Decrypt on that CMK -- granted to the workload's IRSA or Pod Identity
+  # role, never to anything stored here. Generate one without the plaintext key
+  # ever existing outside KMS:
+  #
+  #   aws kms generate-data-key-without-plaintext \
+  #     --key-id <cmk> --key-spec AES_256 --query CiphertextBlob --output text
+  #
+  # Rotate by generating another and moving the old ciphertext into
+  # keyCiphertextPrevious (comma separated), which opens stored credentials but
+  # seals no new one. Empty leaves sealing to applicationSecret above.
+  # This is the path a multi-replica installation wants: every replica resolves
+  # the same master, with nothing long-lived on any node.
+  #
+  # vaultPath is the other root: the master itself lives in the Vault/OpenBao
+  # this organization already runs, at a KV v2 path under secretStore.mount
+  # whose vaultField holds it hex encoded. It requires secretStore.enabled, and
+  # wires the API into the store too, since the API is what seals a credential
+  # an operator types in -- see secretStore.kubernetes.sealingRole for a policy
+  # that reads only this path. vaultPathPrevious (comma separated) opens stored
+  # credentials but seals no new one.
+  sealing:
+    kmsKeyId: ""
+    keyCiphertext: ""
+    keyCiphertextPrevious: ""
+    vaultPath: ""
+    vaultPathPrevious: ""
+    vaultField: key
+  # Optional: pin the scanner role ARN (the workload's IRSA/Pod Identity role)
+  # instead of approving the runtime AWS identity in the dashboard.
+  scannerPrincipalArn: ""
+  # Installed ticket-system plugins an admin may choose for owner approvals and
+  # exposure responses (TICKET_SYSTEM_PLUGINS, comma-separated ids such as
+  # "jira"); empty offers none. Rendered into the API and worker containers.
+  ticketSystemPlugins: ""
+  # platform.heartbeat for the SIEM every heartbeatMinutes (1-60), and days a
+  # delivered SIEM event is kept (0 keeps finding and connection events;
+  # heartbeats and test events always go after 7 days). leaverRetentionDays
+  # (30-3650): a departed person's check data is deleted this long after departure.
+  operations:
+    heartbeatMinutes: 5
+    siemEventRetentionDays: 0
+    leaverRetentionDays: 365
+  maxObjectSizeMB: 50
+  # Task-runner processes per worker pod (0-32), each scanning one task at a time
+  # with its own memory, so size resources.worker with it (about 0.9 GiB a runner).
+  # 0 picks min(4, the CPUs the pod may use: its CPU limit and affinity).
+  workerConcurrency: 2
+  # Verification sends each discovered credential to its issuing provider to
+  # learn whether it is active and what it can access. On by default; an Admin
+  # switches it from the dashboard. `disabled` locks it off. Needs HTTPS egress.
+  verificationMode: enabled
+  # The three read-only AWS investigations: SimulatePrincipalPolicy, Secrets
+  # Manager metadata, and a discovered key's observed use (CloudTrail event
+  # history plus IAM GetAccessKeyLastUsed). Each calls AWS with the workload
+  # identity, so each is switched on by an Admin in the dashboard and defaults
+  # off there. These values allow that (the default) or hard-lock one off.
+  iamPotentialAccessMode: enabled
+  awsSecretsInventoryMode: enabled
+  awsUsageLookupMode: enabled
+  # Learned false-positive profiles: confirmed false positives become per-scope
+  # samples (redacted path / line-shape features only) and an active profile
+  # auto-triages repeats of the same context. See docs/LEARNED_FALSE_POSITIVES.md.
+  # The switch and its threshold are an Admin's, set in the dashboard where the
+  # policy is visible and the change is recorded; this allows that (the default)
+  # or hard-locks auto-triage off for the whole installation.
+  learnedFalsePositivesMode: enabled
+  # Approved two-party AWS key rotation (PREPARE/PUBLISH). Requests and review
+  # work while this is off; nothing touches AWS until it is true.
+  rotationExecutionEnabled: false
+  # Approved IAM key actions (disable; rotation phases share the switch above).
+  # Plans and independent approval work while this is off.
+  actionExecutionEnabled: false
+  # Permanent deletion of an already-inactive key has its own gate on top.
+  actionDeletionEnabled: false
+  # Secrets Manager ARNs a rotation plan may bind to. An allowlist entry is not
+  # a permission grant; the executor role still decides.
+  rotationSecretArns: []
+  # Secrets Manager ARNs an Admin may declare as where a discovered credential
+  # is stored (a "possibly stored here" mapping). Only DescribeSecret and
+  # ListSecretVersionIds are ever called for it; never GetSecretValue.
+  secretManagerAllowedReferences: []
+  # IAM Identity Center access: reach accounts through the operator's own
+  # assignment instead of a member role, with nothing deployed. Off on a cluster,
+  # and deliberately a value rather than a hard lock -- it does work here, but
+  # only with a WRITABLE token cache (botocore rewrites it on the hourly renewal,
+  # so a read-only Secret mount fails with EROFS) and a human must run
+  # `aws sso login` to seed it and again when the client registration expires,
+  # about every 90 days. Member-role access has neither constraint.
+  ssoDiscoveryMode: disabled
+  # GitHub Enterprise Server hosts this installation uses (bare hosts).
+  # github.com is always known. A connection records its own host; this list is
+  # what verification and the capability probe may retry a rejected token
+  # against, so an unlisted GHES host is simply never contacted.
+  githubEnterpriseHosts: []
+  # Optional S3 URL of deploy/cloudformation/member-account-role.yaml. Adds a
+  # CloudFormation quick-create link beside the CLI deploy command.
+  onboardingTemplateURL: ""
+
+# SIEM exporter (cremore-siem, docs/SIEM_INTEGRATION.md). It reads only the SIEM
+# outbox with its own restricted database role and sends events to the listed
+# destinations; it never receives source credentials or the fingerprint key.
+# Off until the destinations and that role's Secret exist; once on it runs
+# around the clock and Kubernetes restarts it if it stops making progress.
+siem:
+  enabled: false
+  # The Python image api and worker use; empty means image.worker.
+  image: ""
+  replicas: 1
+  # The destination JSON (section 3 of the SIEM guide). Never put a token here:
+  # a destination's token_env names an environment variable, filled from
+  # tokenSecretName.
+  config:
+    destinations: []
+  # Existing Secret holding the restricted role's SIEM_DATABASE_URL.
+  databaseUrlSecret:
+    name: cremore-siem-database
+    key: url
+  # Optional existing Secret; each key becomes an environment variable of the
+  # same name (for example SPLUNK_HEC_TOKEN) for a token_env to name.
+  tokenSecretName: ""
+  # Optional existing Secret mounted at /etc/cremore-siem: a syslog_tls
+  # destination's ca_file, cert_file and key_file name its keys there.
+  tlsSecretName: ""
+  # Outbound TCP ports the destinations listen on (Splunk HEC often uses 8088,
+  # syslog over TLS 6514), sent to networkPolicy.httpsEgressCIDRs (or httpsCIDR).
+  egressPorts: [443]
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+resources:
+  api:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  # The control loop plus config.workerConcurrency task runners: about 120 MiB each
+  # at rest, and a scanning runner adds up to 256 MiB of read-ahead and a document
+  # parser child of up to 512 MiB, so two runners peak near 1.9 GiB. Remediator and
+  # control pods use these too.
+  worker:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 3Gi }
+  web:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  oauth2Proxy:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 256Mi }

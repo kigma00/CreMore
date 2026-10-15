@@ -1,0 +1,7 @@
+node_modules
+.next
+npm-debug.log
+# Runtime authentication configuration must not enter build layers.
+.env
+.env.*
+!.env.example
