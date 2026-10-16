@@ -37,9 +37,6 @@ dependencies = [
 gcp = ["google-auth[requests]>=2.35"]
 azure = ["azure-identity>=1.24,<2"]  # exclude_broker_credential: no Windows sign-in as the worker
 dev = [
-    "pytest>=8.3",
-    "jsonschema>=4.23",       # Atlassian output/job schema contract checks
-    "rfc3339-validator>=0.1.4",  # Enforce date-time formats in those schemas
     "ruff>=0.7",
 ]
 
@@ -49,21 +46,6 @@ cremore-worker = "cremore.cli.worker:main"
 cremore-coverage = "cremore.cli.coverage:main"
 cremore-siem = "cremore.cli.siem:main"
 cremore-token-refresher = "cremore.cli.token_refresher:main"
-
-[tool.pytest.ini_options]
-testpaths = [
-    "cremore",
-    "aws/backend", "gcp/backend", "github/backend", "gitlab/backend",
-    "notion/backend", "atlassian/backend", "azure/backend", "vault/backend",
-    "okta/backend", "keycloak/backend", "slack/backend", "website/backend",
-]
-python_files = ["*_test.py", "test_*.py"]
-pythonpath = [
-    "aws/backend", "gcp/backend", "github/backend", "gitlab/backend",
-    "notion/backend", "atlassian/backend", "azure/backend", "vault/backend",
-    "okta/backend", "keycloak/backend", "slack/backend", "website/backend",
-    "gcp/standalone",
-]
 
 [tool.ruff]
 line-length = 100

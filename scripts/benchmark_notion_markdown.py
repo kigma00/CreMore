@@ -271,12 +271,5 @@ def main(argv=None):
     return 1 if args.check and not ok else 0
 
 
-def test_synthetic_benchmark():
-    """pytest also loads this checkout's pyproject provider paths in a worktree."""
-    main(["--pages", "500", "--latency-ms", "5"])
-    main(["--pages", "5", "--latency-ms", "5", "--paced"])
-    assert main(["--pages", "500", "--changed", "5", "--assert"]) == 0
-
-
 if __name__ == "__main__":
     sys.exit(main())

@@ -19,12 +19,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The same provider roots pyproject.toml puts on the test path.
+# Provider roots loaded for the import cost measurement.
 VENDOR_PATHS = ("aws/backend", "gcp/backend", "github/backend", "gitlab/backend", "notion/backend",
                 "atlassian/backend", "azure/backend", "vault/backend", "okta/backend", "keycloak/backend",
                 "slack/backend", "website/backend", "gcp/standalone")
 HEAVY = ("sqlalchemy", "psycopg", "fastapi", "starlette", "uvicorn", "boto3", "botocore", "google",
-         "jwt", "azure", "httpx", "re2", "pytest")
+         "jwt", "azure", "httpx", "re2")
 PLATFORM_RUNTIME = ("cremore.api", "cremore.db", "cremore.worker", "cremore.coverage.store",
                     "cremore.coverage.providers")
 TARGETS = (

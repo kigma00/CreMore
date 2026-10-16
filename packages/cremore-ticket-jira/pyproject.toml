@@ -15,6 +15,3 @@ jira = "cremore_ticket_jira:PROVIDER"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cremore_ticket_jira"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

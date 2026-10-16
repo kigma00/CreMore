@@ -14,7 +14,7 @@ from cremore.coverage.models import Batch, ConnectionSpec, Contract, Finish, Sta
 from cremore.coverage.store import CoverageError, CoverageStore
 
 # Integration: the source_type filter accepts the registry's content sources instead of a
-# copied literal; the order and values are unchanged (cremore/sources/module_contract_test.py).
+# copied literal; keep the order and values aligned with the web source list.
 from cremore.sources.registry import SOURCE_TYPES
 
 
