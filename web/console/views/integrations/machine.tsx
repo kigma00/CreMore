@@ -23,19 +23,17 @@ type TokenState = { state: "READY" | "FAILED" | "PENDING"; code: string | null; 
 type Process = { process: string; revision: number | null; error: string | null; tokens: Record<string, TokenState>; reported_at?: string };
 export type MachineView = {
   configured: boolean; revision: number; secret_saved: boolean; idp: Idp | null;
-  aws: (Binding & { role_arn: string }) | null; gcp: (Binding & { provider: string; service_account: string }) | null;
-  azure: (Binding & { tenant: string; client_id: string }) | null; vault: { name: string; scope: string | null; audience: string | null }[];
+  aws: (Binding & { role_arn: string }) | null;
   processes: Process[]; test: { tokens: Record<string, TokenState>; tested_by?: string; revision?: number; state?: string; safe_error_code?: string } | null;
 };
 
-const CLOUDS = ["aws", "gcp", "azure"] as const;
+const CLOUDS = ["aws"] as const;
 type Cloud = typeof CLOUDS[number];
 
 /** Which clouds the identity reaches, for the integrations card. */
 export function machineState(view: MachineView | undefined, L: Say): string {
   if (!view?.configured) return L("설정 안 됨", "Not set up");
-  const on = CLOUDS.filter(cloud => view[cloud]?.enabled).map(cloud => ({ aws: "AWS", gcp: "GCP", azure: "Azure" })[cloud]);
-  if (view.vault.length) on.push("Vault");
+  const on = CLOUDS.filter(cloud => view[cloud]?.enabled).map(() => "AWS");
   return on.length ? on.join(" · ") : L("꺼짐", "Off");
 }
 
@@ -59,12 +57,6 @@ const CODE: Record<string, [string, string]> = {
   MACHINE_IDENTITY_TOKEN_URL_INVALID: ["토큰 URL은 https 주소여야 합니다.", "The token URL must be an https address."],
   MACHINE_IDENTITY_CLIENT_ID_INVALID: ["클라이언트 ID를 확인하세요.", "Check the client ID."],
   MACHINE_IDENTITY_AWS_ROLE_ARN_INVALID: ["IAM 역할 ARN을 확인하세요(arn:aws:iam::계정:role/이름).", "Check the IAM role ARN (arn:aws:iam::account:role/name)."],
-  MACHINE_IDENTITY_GCP_PROVIDER_INVALID: ["워크로드 아이덴티티 공급자 이름을 확인하세요(//iam.googleapis.com/projects/번호/…/providers/이름).", "Check the workload identity provider (//iam.googleapis.com/projects/number/…/providers/name)."],
-  MACHINE_IDENTITY_GCP_ACCOUNT_INVALID: ["서비스 계정 이메일을 확인하세요.", "Check the service account e-mail."],
-  MACHINE_IDENTITY_AZURE_TENANT_INVALID: ["테넌트 ID(GUID)를 확인하세요.", "Check the tenant ID (GUID)."],
-  MACHINE_IDENTITY_AZURE_CLIENT_INVALID: ["앱 등록의 클라이언트 ID(GUID)를 확인하세요.", "Check the app registration's client ID (GUID)."],
-  MACHINE_IDENTITY_VAULT_NAME_INVALID: ["Vault 토큰 이름은 영문·숫자·-·_로 씁니다.", "Name Vault tokens with letters, digits, - and _."],
-  MACHINE_IDENTITY_VAULT_NAME_REPEATED: ["같은 Vault 토큰 이름이 두 번 있습니다.", "A Vault token name is repeated."],
   MACHINE_IDENTITY_SCOPE_INVALID: ["scope를 확인하세요.", "Check the scope."],
   MACHINE_IDENTITY_AUDIENCE_INVALID: ["audience를 확인하세요.", "Check the audience."],
   MACHINE_IDENTITY_CHANGED: ["다른 관리자가 먼저 저장했습니다. 다시 열어 주세요.", "Another admin saved first. Open it again."],
@@ -81,8 +73,7 @@ export function codeText(code: string | null | undefined, L: Say) {
 
 type Form = {
   token_url: string; client_id: string; secret: string; auth_method: string; token_field: string; scope: string; audience: string;
-  aws: boolean; role_arn: string; gcp: boolean; provider: string; service_account: string;
-  azure: boolean; tenant: string; azure_client: string; vault: { name: string; audience: string }[];
+  aws: boolean; role_arn: string;
 };
 
 function formOf(view: MachineView | undefined): Form {
@@ -91,9 +82,6 @@ function formOf(view: MachineView | undefined): Form {
     auth_method: view?.idp?.auth_method ?? "client_secret_post", token_field: view?.idp?.token_field ?? "access_token",
     scope: view?.idp?.scope ?? "", audience: view?.idp?.audience ?? "",
     aws: Boolean(view?.aws?.enabled), role_arn: view?.aws?.role_arn ?? "",
-    gcp: Boolean(view?.gcp?.enabled), provider: view?.gcp?.provider ?? "", service_account: view?.gcp?.service_account ?? "",
-    azure: Boolean(view?.azure?.enabled), tenant: view?.azure?.tenant ?? "", azure_client: view?.azure?.client_id ?? "",
-    vault: (view?.vault ?? []).map(item => ({ name: item.name, audience: item.audience ?? "" })),
   };
 }
 
@@ -106,15 +94,10 @@ export function machineBody(form: Form, revision: number) {
       scope: blank(form.scope), audience: blank(form.audience) },
     client_secret: form.secret.trim() || null,
     aws: { enabled: form.aws, role_arn: form.role_arn.trim() },
-    gcp: { enabled: form.gcp, provider: form.provider.trim(), service_account: form.service_account.trim() },
-    azure: { enabled: form.azure, tenant: form.tenant.trim(), client_id: form.azure_client.trim() },
-    vault: form.vault.filter(item => item.name.trim()).map(item => ({ name: item.name.trim(), audience: blank(item.audience) })),
   };
 }
 
-const TITLE: Record<Cloud | "vault", [string, string]> = {
-  aws: ["AWS", "AWS"], gcp: ["Google Cloud", "Google Cloud"], azure: ["Microsoft Azure", "Microsoft Azure"], vault: ["Vault·OpenBao", "Vault and OpenBao"],
-};
+const TITLE: Record<Cloud, [string, string]> = { aws: ["AWS", "AWS"] };
 
 export function MachineIdentityModal({ onClose }: { onClose: () => void }) {
   const L = useL();
@@ -139,7 +122,7 @@ export function MachineIdentityModal({ onClose }: { onClose: () => void }) {
   }
   const data = view.data;
   const set = (change: Partial<Form>) => setForm(current => current ? { ...current, ...change } : current);
-  const anyOn = form.aws || form.gcp || form.azure || form.vault.some(item => item.name.trim());
+  const anyOn = form.aws;
   const needsSecret = anyOn && !data.secret_saved && !form.secret.trim();
 
   async function save() {
@@ -167,24 +150,17 @@ export function MachineIdentityModal({ onClose }: { onClose: () => void }) {
 
   const tested = data.test?.tokens ?? {};
   const testQueued = data.test?.state === "QUEUED" && data.test.revision === data.revision;
-  const bindingNames: (Cloud | string)[] = [...CLOUDS.filter(cloud => data[cloud]?.enabled), ...data.vault.map(item => `vault:${item.name}`)];
+  const bindingNames: Cloud[] = CLOUDS.filter(cloud => data[cloud]?.enabled);
   const steps: GuideStep[] = Object.entries(setup.data?.steps ?? {}).map(([name, script]) => ({
-    key: name, title: name.startsWith("vault:") ? L(`${name.slice(6)} Vault가 이 IdP를 믿게 하기`, `Make the ${name.slice(6)} Vault trust this IdP`)
-      : L(`${L(...TITLE[name as Cloud])}가 이 IdP를 믿게 하기`, `Make ${L(...TITLE[name as Cloud])} trust this IdP`),
-    text: name === "aws" ? L("IAM OIDC 공급자와 이 IdP를 믿는 역할을 만들고, 멤버 계정 역할을 맡을 권한을 줍니다. 그다음 AWS 연동에서 연결 확인으로 이 신원을 승인합니다.",
-      "Create the IAM OIDC provider and a role trusting this IdP, allowed to assume member account roles. Then approve the identity with Test connection in the AWS integration.")
-      : name === "gcp" ? L("워크로드 아이덴티티 풀과 이 IdP의 OIDC 공급자를 만들고 서비스 계정 가장 권한을 줍니다.", "Create the workload identity pool and this IdP's OIDC provider, and grant impersonation of the service account.")
-        : name === "azure" ? L("앱 등록에 이 IdP 토큰을 믿는 연합 자격증명을 추가합니다.", "Add a federated credential trusting this IdP's token to the app registration.")
-          : L(`Vault 연결의 JWT 로그인에서 토큰 파일 이름을 idp-${name.slice(6)}로 둡니다.`, `Set the Vault connection's JWT login token file to idp-${name.slice(6)}.`),
+    key: name, title: L("AWS가 이 IdP를 믿게 하기", "Make AWS trust this IdP"),
+    text: L("IAM OIDC 공급자와 이 IdP를 믿는 역할을 만들고, AWS 연결 확인으로 신원을 승인합니다.", "Create the IAM OIDC provider and a role trusting this IdP, then approve it with the AWS connection test."),
     actions: [{ kind: "copy" as const, label: L("명령 복사", "Copy commands"), text: script }],
   }));
 
   const cloudCard = (cloud: Cloud, fields: ReactNode) => <div className={cls("mi-cloud", form[cloud] && "on")} key={cloud}>
     <button type="button" className="ig-feat-card" role="checkbox" aria-checked={form[cloud]} onClick={() => set({ [cloud]: !form[cloud] } as Partial<Form>)}>
       <Check on={form[cloud]} /><span className="ig-feat-text"><span className="t">{L(...TITLE[cloud])}</span>
-        <span className="d">{({ aws: L("AWS 연동이 이 IdP 토큰으로 IAM 역할을 맡습니다.", "The AWS integrations assume an IAM role with this IdP's token."),
-          gcp: L("GCP의 ADC 연동이 워크로드 아이덴티티 연동으로 읽습니다.", "The GCP ADC integrations read through workload identity federation."),
-          azure: L("Azure·Entra ID의 워크로드 신원 연동이 앱 등록으로 읽습니다.", "The Azure and Entra ID workload identity integrations read as the app registration.") })[cloud]}</span></span>
+        <span className="d">{L("AWS 연동이 이 IdP 토큰으로 IAM 역할을 맡습니다.", "The AWS integration assumes an IAM role with this IdP token.")}</span></span>
       {data[cloud]?.enabled ? <BindingChip view={data} name={cloud} L={L} /> : null}
     </button>
     {form[cloud] ? <div className="mi-fields">{fields}</div> : null}
@@ -192,8 +168,8 @@ export function MachineIdentityModal({ onClose }: { onClose: () => void }) {
 
   return <Modal onClose={onClose} labelledBy="mi-title" className="integ mi" dismissable={!busy}>
     {head}
-    <p className="ig-sub mi-intro">{L("CreMore가 AWS·GCP·Azure·Vault에 회사 IdP가 발급한 기계 토큰으로 접근합니다. 클라우드마다 키를 두지 않고, 신원을 사용하는 실행 프로세스가 토큰을 스스로 갱신합니다.",
-      "CreMore reaches AWS, GCP, Azure and Vault with a machine token from your company IdP. No key is kept per cloud; the processes using this identity renew their tokens automatically.")}</p>
+    <p className="ig-sub mi-intro">{L("CreMore가 회사 IdP의 기계 토큰으로 AWS에 접근합니다. 실행 프로세스가 토큰을 갱신합니다.",
+      "CreMore reaches AWS with a machine token from your company IdP. Runtime processes renew the token automatically.")}</p>
     {error ? <Banner tone="bad" icon="alert" onClose={() => setError(null)}>{error}</Banner> : null}
     {formRevision !== data.revision ? <Banner tone="warn" icon="alert">{L("설정이 변경됐습니다. 입력은 유지했습니다. 최신 내용을 확인하고 다시 적용하세요.", "The settings changed. Your input is kept. Review the latest version and apply again.")}
       <button type="button" className="link-btn" onClick={() => { setForm(formOf(data)); setFormRevision(data.revision); }}>{L("최신 내용으로 다시 불러오기", "Reload the latest version")}</button></Banner> : null}
@@ -212,8 +188,8 @@ export function MachineIdentityModal({ onClose }: { onClose: () => void }) {
         <SelectField label={L("쓸 토큰", "Token to use")} value={form.token_field} onChange={value => set({ token_field: value })}
           options={[{ id: "access_token", label: "access_token" }, { id: "id_token", label: "id_token" }]} />
       </div>
-      <p className="ig-hint"><Ic name="info" size={15} /><span>{L("Okta는 사용자 지정 인증 서버의 client credentials 서비스 앱, Keycloak은 서비스 계정을 켠 client, Entra ID는 앱 등록을 씁니다. Entra가 발급한 토큰은 Azure 자신의 연동에는 쓸 수 없습니다.",
-        "Okta: a client-credentials service app on a custom authorization server. Keycloak: a client with service accounts. Entra ID: an app registration, whose tokens cannot federate into Azure itself.")}</span></p>
+      <p className="ig-hint"><Ic name="info" size={15} /><span>{L("회사 IdP에서 client credentials 앱을 등록하고 AWS 역할이 해당 IdP를 신뢰하도록 설정합니다.",
+        "Register a client credentials app in your IdP and configure the AWS role to trust it.")}</span></p>
     </div>
 
     <div className="ig-section">
@@ -221,27 +197,6 @@ export function MachineIdentityModal({ onClose }: { onClose: () => void }) {
       <div className="mi-clouds">
         {cloudCard("aws", <TextField label={L("이 IdP를 믿는 IAM 역할 ARN", "IAM role ARN trusting this IdP")} value={form.role_arn} onChange={value => set({ role_arn: value })}
           placeholder="arn:aws:iam::123456789012:role/CreMoreIdp" />)}
-        {cloudCard("gcp", <>
-          <TextField label={L("워크로드 아이덴티티 공급자", "Workload identity provider")} value={form.provider} onChange={value => set({ provider: value })}
-            placeholder="//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/cremore/providers/idp" />
-          <TextField label={L("가장할 서비스 계정 (선택)", "Service account to impersonate (optional)")} value={form.service_account}
-            onChange={value => set({ service_account: value })} placeholder="cremore-reader@project.iam.gserviceaccount.com" />
-        </>)}
-        {cloudCard("azure", <div className="row2">
-          <TextField label={L("테넌트 ID", "Tenant ID")} value={form.tenant} onChange={value => set({ tenant: value })} />
-          <TextField label={L("앱 등록 클라이언트 ID", "App registration client ID")} value={form.azure_client} onChange={value => set({ azure_client: value })} />
-        </div>)}
-        <div className={cls("mi-cloud", form.vault.length > 0 && "on")}>
-          <div className="mi-vault-head"><b>{L(...TITLE.vault)}</b>
-            <span className="ig-sub">{L("Vault 연결의 JWT 로그인이 idp-이름 파일로 이 IdP 토큰을 씁니다.", "A Vault connection's JWT login uses this IdP's token from the idp-<name> file.")}</span>
-            <button type="button" className="link-btn" onClick={() => set({ vault: [...form.vault, { name: "", audience: "" }] })}><Ic name="plus" size={14} />{L("토큰 추가", "Add a token")}</button></div>
-          {form.vault.map((item, index) => <div className="row2 mi-vault-row" key={index}>
-            <TextField label={L("이름", "Name")} value={item.name} onChange={value => set({ vault: form.vault.map((row, at) => at === index ? { ...row, name: value } : row) })} placeholder="pay" />
-            <TextField label={L("audience (선택)", "Audience (optional)")} value={item.audience} onChange={value => set({ vault: form.vault.map((row, at) => at === index ? { ...row, audience: value } : row) })} />
-            <button type="button" className="icon-btn" aria-label={L("이 토큰 빼기", "Remove this token")} onClick={() => set({ vault: form.vault.filter((_, at) => at !== index) })}><Ic name="trash" size={16} /></button>
-          </div>)}
-          {data.vault.length ? <div className="mi-vault-states">{data.vault.map(item => <span key={item.name} className="ig-sub">idp-{item.name} <BindingChip view={data} name={`vault:${item.name}`} L={L} /></span>)}</div> : null}
-        </div>
       </div>
     </div>
 
@@ -253,7 +208,7 @@ export function MachineIdentityModal({ onClose }: { onClose: () => void }) {
         const now = tested[name];
         const aud = now?.claims?.aud;
         return <div className="mi-token" key={name}>
-          <b>{name.startsWith("vault:") ? `Vault · ${name.slice(6)}` : L(...TITLE[name as Cloud])}</b>
+          <b>{L(...TITLE[name])}</b>
           <BindingChip view={data} name={name} L={L} />
           {now ? now.state === "READY" ? <span className="ig-sub">{L("받아 봄", "Fetched")} · iss <span className="mono">{now.claims?.iss ?? "—"}</span> · sub <span className="mono">{now.claims?.sub ?? "—"}</span>
             {aud ? <> · aud <span className="mono">{Array.isArray(aud) ? aud.join(", ") : aud}</span></> : null}

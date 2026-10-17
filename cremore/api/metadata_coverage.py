@@ -30,7 +30,7 @@ from cremore.coverage.metadata_models import (
     scope_matches,
 )
 from cremore.coverage.metadata_store import MetadataStore
-from cremore.coverage.providers import adapter_for, collector_for, validate_spec
+from cremore.coverage.providers import _ADAPTERS, adapter_for, collector_for, validate_spec
 from cremore.coverage.providers.catalog import catalog
 from cremore.coverage.scheduling import connection_job
 from cremore.coverage.store import CoverageError
@@ -114,7 +114,7 @@ def github_check_records(store, checks):
     return result
 
 
-_PRIVATE = {"provider_digest", "session_fingerprint", "signed_fingerprints", "identity_keys", "identity_key_id", "payload_digest", "store_values"}
+_PRIVATE = {"provider_digest", "session_fingerprint", "signed_fingerprints", "identity_keys", "identity_key_id", "payload_digest", "store_values", "issuer_identifier"}
 
 
 # A people-directory collection's records (cremore.identity.idp): who is employed, since when, and -- where profiles are
@@ -133,14 +133,6 @@ def public_metadata(value, people=False):
         out = {key: None if key == "value_match" and isinstance(item, dict)
                and item.get("evidence") == "PROVIDER_DIGEST" else public_metadata(item, people)
                for key, item in value.items() if key not in _PRIVATE}
-        if "issuer_identifier" in out and out["issuer_identifier"] != "":
-            from cremore_gcp.linkage import is_service_account_key_identifier
-
-            from cremore.detection.safe_text import safe_fact_text
-
-            identifier = out["issuer_identifier"]
-            if not is_service_account_key_identifier(identifier) or safe_fact_text(identifier) is None:
-                out.pop("issuer_identifier")
         if not people and value.get("purpose") in PEOPLE and isinstance(out.get("facts"), list):
             out["facts"] = []
         return out
@@ -180,22 +172,16 @@ def register_metadata_routes(app, repo, require_auth, require_role, require_prin
                                                actor=actor, event_type=action, note=note))
 
     def machine(connection_id: uuid.UUID, x_cremore_collector_token: str = Header(default="", max_length=1024)):
-        store.authorize(store.get(connection_id), x_cremore_collector_token)
-        store.require_connection(connection_id)
+        row = store.require_connection(connection_id)
+        store.authorize(row, x_cremore_collector_token)
+        if row["spec"]["provider"] not in _ADAPTERS:
+            raise CoverageError("METADATA_ADAPTER_UNAVAILABLE")
         return x_cremore_collector_token
 
     def connection_view(row, *, references=False):
         runs = store.connection_runs(row["id"], limit=1)
         job = connection_job(repo, row["id"])
-        latest = next(iter(runs["items"]), None)
         extra = {}
-        if row["spec"]["provider"] == "gcp":
-            from cremore.api.gcp_coverage import authentication
-            from cremore.coverage.gcp_store import linked_source_disabled
-            extra["connection_auth"] = authentication(store, row, latest, job)
-            if linked_source_disabled(repo, row["id"]):
-                extra["enabled"] = False
-                extra["connection_auth"].update(state="DISABLED", reason_code="GCP_SOURCE_DISABLED")
         if row["spec"]["provider"] == "github":
             from cremore.coverage.github_exports import applicable, public_state
 
@@ -217,7 +203,8 @@ def register_metadata_routes(app, repo, require_auth, require_role, require_prin
     @app.get("/api/v2/coverage/connections")
     def connections(_actor=Depends(require_auth)):
         return {"schema_version": 2, "items": [connection_view(row) for row in store.list_connections()
-                                                if row["spec"].get("schema_version") == 2]}
+                                                if row["spec"].get("schema_version") == 2
+                                                and row["spec"].get("provider") in _ADAPTERS]}
 
     @app.get("/api/v2/coverage/connections/{connection_id}")
     def connection(connection_id: uuid.UUID, _actor=Depends(admin)):
@@ -514,6 +501,8 @@ def register_metadata_routes(app, repo, require_auth, require_role, require_prin
         with store.transaction() as conn:
             bound = TaskStore(repo)._bound(conn)
             current = MetadataStore(bound).require_connection(connection_id)
+            if body.enabled is True and current["spec"].get("provider") not in _ADAPTERS:
+                raise CoverageError("METADATA_ADAPTER_UNAVAILABLE")
             if owned and body.enabled is True and "identity_status" in (current["spec"].get("capabilities") or []):
                 # Turned back on only through its provider connection, which holds it to the sign-in IdP.
                 from cremore.onboarding import sign_in
@@ -554,10 +543,6 @@ def register_metadata_routes(app, repo, require_auth, require_role, require_prin
             spec = MetadataConnectionSpec.model_validate(row["spec"])
             collector = collector_for(spec.provider)
             collector.validate_spec(spec)
-            if spec.provider == "gcp":
-                from cremore.coverage.gcp_store import linked_source_disabled
-                if linked_source_disabled(bound, connection_id):
-                    raise CoverageError("GCP_SOURCE_DISABLED")
             payload = {"provider": spec.provider, "coverage_connection_id": str(connection_id), "coverage_revision": row["revision"]}
             if request.retry_from_run:
                 previous = current_store.run_detail(uuid.UUID(request.retry_from_run), limit=1)["run"]

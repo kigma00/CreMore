@@ -4,9 +4,7 @@
    ``identity``).
 2. How -- an auth method in the provider's recommended order, where the connection points
    (``target``) and the credential. Secret fields are sealed on arrival into one envelope
-   every purpose shares; a ``vault://`` reference may stand in for it. A credential CreMore
-   makes itself (a Microsoft app certificate) is made here, sealed at once, and only its
-   public part is kept in the clear (``target.generated``). Records that must exist before the
+   every purpose shares; a ``vault://`` reference may stand in for it. Records that must exist before the
    check (AWS accounts and their ExternalIds) are created here.
 3. Check -- the worker asks the provider, per purpose, whether the credential holds each
    permission that purpose needs (``provider-check`` job); results are stored on the
@@ -156,7 +154,7 @@ def _fields(fields, given, edition=None, *, what="TARGET", target=None):
 
 
 def _credential(settings, provider, method, given, target=None, *, purposes=()):
-    """``({role: sealed or vault:// reference}, generated public part or None)`` from the fields of ``method``."""
+    """Seal the declared credential fields or retain a Vault reference."""
     from cremore.secretstore.isolation import credential_binding
     from cremore.secretstore.sealed import SealedSecretError, seal_fields
 
@@ -178,10 +176,10 @@ def _credential(settings, provider, method, given, target=None, *, purposes=()):
             raise OnboardingError("CREDENTIAL_REFERENCE_INVALID")
         if settings.isolated_deployment:
             try:
-                return {"credential": seal_fields(settings.credential_sealing_keys, {"vault_ref": ref}, binding=binding)}, None
+                return {"credential": seal_fields(settings.credential_sealing_keys, {"vault_ref": ref}, binding=binding)}
             except SealedSecretError:
                 raise OnboardingError("CREDENTIAL_INVALID") from None
-        return {"credential": ref}, None
+        return {"credential": ref}
     if set(fields) - set(declared):
         raise OnboardingError("CREDENTIAL_FIELD_UNKNOWN")
     for name, field in declared.items():
@@ -190,15 +188,9 @@ def _credential(settings, provider, method, given, target=None, *, purposes=()):
     if any(not isinstance(value, str) or len(value) > 65536 for value in fields.values()):
         raise OnboardingError("CREDENTIAL_FIELD_INVALID")
     if not declared:
-        return {}, None
-    generated = None
+        return {}
     try:
-        if method.get("generated"):
-            # CreMore makes this credential (a key pair); only its public part is ever shown.
-            envelopes, generated = catalog.module(provider).generate(provider, method["id"], dict(fields),
-                                                                     dict(target or {}))
-        else:
-            envelopes = catalog.module(provider).credential(provider, method["id"], dict(fields))
+        envelopes = catalog.module(provider).credential(provider, method["id"], dict(fields))
     except ValueError as exc:
         raise OnboardingError(getattr(exc, "code", None) or str(exc).split(":")[0] or "CREDENTIAL_INVALID") from None
     try:
@@ -209,7 +201,7 @@ def _credential(settings, provider, method, given, target=None, *, purposes=()):
     finally:
         for envelope in (envelopes or {}).values():
             envelope.clear()
-    return sealed, generated
+    return sealed
 
 
 def _public_fields(method, given) -> dict:
@@ -275,12 +267,10 @@ def create(repo, settings, body, actor) -> dict:
     name = body.get("name") or _default_name(descriptor, edition, target)
     if not isinstance(name, str) or not _TEXT.fullmatch(str(name).strip()[:120] or "x"):
         raise OnboardingError("NAME_INVALID")
-    secret_refs, generated = _credential(settings, provider, method, body.get("credential"), target, purposes=purposes)
+    secret_refs = _credential(settings, provider, method, body.get("credential"), target, purposes=purposes)
     public = _public_fields(method, body.get("credential"))
     if public:
         target = {**target, "auth": public}
-    if generated:
-        target = {**target, "generated": generated}
     candidate = {"provider": provider, "edition": edition, "name": str(name).strip()[:120], "target": target,
                  "auth_method": method["id"], "secret_refs": secret_refs, "purposes": purposes}
     ready = getattr(module, "ready", None)
@@ -328,7 +318,7 @@ def get(repo, connection_id) -> dict:
         record = _store(repo).get(connection_id)
     except (ValueError, TypeError):
         record = None
-    if record is None:
+    if record is None or record["provider"] not in catalog.providers():
         raise OnboardingError("PROVIDER_CONNECTION_NOT_FOUND", 404)
     return record
 
@@ -672,23 +662,13 @@ def set_credential(repo, settings, connection_id, body, actor) -> dict:
     method_id = body.get("auth_method") or record["auth_method"]
     method = _method(record["provider"], record["purposes"], method_id, record["edition"],
                      new_setup=method_id != record["auth_method"])
-    target = {key: value for key, value in record["target"].items() if key not in ("auth", "generated")}
-    secret_refs, generated = _credential(settings, record["provider"], method, body.get("credential"), target,
-                                         purposes=record["purposes"])
+    target = {key: value for key, value in record["target"].items() if key != "auth"}
+    secret_refs = _credential(settings, record["provider"], method, body.get("credential"), target,
+                              purposes=record["purposes"])
     public = _public_fields(method, body.get("credential"))
     if public:
         target["auth"] = public
     note = method["id"]
-    if generated:
-        # A key or certificate made again leaves the earlier one registered at the provider, valid until it is
-        # removed there: keep its public name so the wizard can say which one to remove, and audit both.
-        before = _made_name(record["target"].get("generated"))
-        if before and method["id"] == record["auth_method"]:
-            generated = {**generated, "previous": before}
-        after = _made_name(generated)
-        if after:
-            note = f"{method['id']} {next(iter((before or {}).values()), '-')}->{next(iter(after.values()))}"
-        target["generated"] = generated
     if ((method["id"] != record["auth_method"] or target.get("auth") != record["target"].get("auth"))
             and _store(repo).children(record["id"])):
         # What the records were built for (access mode, login role, auth type) is fixed once they
@@ -705,15 +685,6 @@ def set_credential(repo, settings, connection_id, body, actor) -> dict:
     _audit(repo, record["id"], actor, "PROVIDER_CONNECTION_CREDENTIAL_CHANGED", note)
     view_ = request_check(repo, record["id"], actor)
     return {**view_, "not_updated": failed}
-
-
-def _made_name(generated) -> dict | None:
-    """The public name of a credential CreMore made: a key's ``kid`` or a certificate's thumbprint."""
-    for name in ("kid", "thumbprint"):
-        value = (generated or {}).get(name)
-        if isinstance(value, str) and value:
-            return {name: value}
-    return None
 
 
 def _expected(body, record):
@@ -813,8 +784,7 @@ def view(repo, record, *, expand=True, shared=None) -> dict:
         "purposes": list(record["purposes"]),
         "feature_enabled": {purpose: purpose in active_plans(record) for purpose in record.get("plans") or {}},
         "target": dict(record["target"]),
-        "plans": {purpose: {k: v for k, v in plan.items() if record["provider"] != "gcp" or k != "keep_values"}
-                  for purpose, plan in (record.get("plans") or {}).items()},
+        "plans": {purpose: dict(plan) for purpose, plan in (record.get("plans") or {}).items()},
         "auth_method": record["auth_method"], "renewal": method.get("renewal"),
         "credential": {"roles": sorted(record["secret_refs"]),
                        "reference": any(str(ref).startswith("vault://") for ref in record["secret_refs"].values()),
@@ -859,6 +829,7 @@ def _ended_check(repo, record, checks):
 
 
 def list_views(repo) -> list[dict]:
-    records = _store(repo).list()
+    supported = catalog.providers()
+    records = [record for record in _store(repo).list() if record["provider"] in supported]
     shared = shared_credentials(records)
     return [view(repo, record, expand=False, shared=shared) for record in records]

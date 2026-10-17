@@ -89,11 +89,6 @@ class Settings(BaseSettings):
     api_tls_cert_file: str = Field(default="", alias="TLS_CERT_FILE")
     api_tls_key_file: str = Field(default="", alias="TLS_KEY_FILE")
 
-    # Google Cloud connector OAuth, separate from dashboard sign-in.
-    gcp_oauth_client_id: str = Field(default="", alias="GCP_OAUTH_CLIENT_ID")
-    gcp_oauth_client_secret: str = Field(default="", alias="GCP_OAUTH_CLIENT_SECRET", repr=False)
-    gcp_oauth_redirect_uri: str = Field(default="", alias="GCP_OAUTH_REDIRECT_URI")
-
     # --- OIDC (AUTH_MODE=oidc) -----------------------------------------------
     # The API independently validates issuer, signature (JWKS), audience,
     # expiry and subject, then maps the groups claim onto platform roles.
@@ -183,7 +178,8 @@ class Settings(BaseSettings):
         if not wanted:
             return []
         import httpx
-        from cremore_vault_provider.secretstore import kv_from_settings, sealing_master
+
+        from cremore.secretstore.vault import kv_from_settings, sealing_master
 
         client = httpx.Client(timeout=10.0)
         try:
@@ -359,8 +355,6 @@ class Settings(BaseSettings):
     scan_schedules_mode: str = Field(default="enabled", alias="SCAN_SCHEDULES_MODE")
     scan_sqs_mode: str = Field(default="enabled", alias="SCAN_SQS_MODE")
     # The customer's own Pub/Sub subscription and Service Bus queue, read like SQS.
-    scan_pubsub_mode: str = Field(default="enabled", alias="SCAN_PUBSUB_MODE")
-    scan_servicebus_mode: str = Field(default="enabled", alias="SCAN_SERVICEBUS_MODE")
     # Change feeds (cremore.scanning.changes): allowed by default, and on unless an Admin switches them off.
     scan_change_feeds_mode: str = Field(default="enabled", alias="SCAN_CHANGE_FEEDS_MODE")
     # Optional pins. Set one and the dashboard shows that field as fixed.
@@ -375,14 +369,6 @@ class Settings(BaseSettings):
     @property
     def scan_sqs_allowed(self) -> bool:
         return self.scan_sqs_mode == "enabled"
-
-    @property
-    def scan_pubsub_allowed(self) -> bool:
-        return self.scan_pubsub_mode == "enabled"
-
-    @property
-    def scan_servicebus_allowed(self) -> bool:
-        return self.scan_servicebus_mode == "enabled"
 
     @property
     def scan_change_feeds_allowed(self) -> bool:
@@ -425,10 +411,6 @@ class Settings(BaseSettings):
     # separated (github.com is always known). Verification and capability probes
     # of a discovered GitHub token are directed at these hosts.
     github_enterprise_hosts: str = Field(default="", alias="GITHUB_ENTERPRISE_HOSTS")
-    # DNS server addresses asked for a company domain's ownership record, comma separated; empty: the
-    # resolver of the network CreMore runs in, whose DNS also knows the intranet's zones (cremore.domains).
-    domain_dns_servers: str = Field(default="", alias="DOMAIN_DNS_SERVERS")
-
     # --- actions (all default-off) -----------------------------------------
     action_execution_enabled: bool = Field(default=False, alias="ACTION_EXECUTION_ENABLED")
     rotation_execution_enabled: bool = Field(default=False, alias="ACTION_ROTATION_ENABLED")
@@ -490,7 +472,6 @@ class Settings(BaseSettings):
     # Where the deployment mounts one login token per external Vault/OpenBao
     # connection (a projected token with that cluster's audience, or a file a
     # token refresher keeps current). Connections name a file here, never a path.
-    vault_connection_token_dir: str = Field(default="", alias="VAULT_CONNECTION_TOKEN_DIR")
 
     @property
     def secret_store_enabled(self) -> bool:
@@ -682,12 +663,6 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_MODE=local requires API_TOKEN of at least 32 characters")
         if self.aws_remediation_profile and not re.fullmatch(r"[A-Za-z0-9._@+=,-]{1,64}", self.aws_remediation_profile):
             raise ValueError("AWS_REMEDIATION_PROFILE must be an AWS CLI profile name")
-        from cremore import domains
-
-        try:
-            domains.servers(self)  # a wrong value would stop the daily re-check, which lapses what no longer holds
-        except domains.DomainError:
-            raise ValueError("DOMAIN_DNS_SERVERS must list IP addresses, comma separated") from None
         if self.scanner_principal_arn and not _IAM_ROLE_ARN.fullmatch(self.scanner_principal_arn):
             raise ValueError("AWS_SCANNER_PRINCIPAL_ARN must be an exact IAM role ARN")
         if self.aws_sso_discovery_permission_set and not re.fullmatch(
@@ -695,7 +670,7 @@ class Settings(BaseSettings):
             raise ValueError("AWS_SSO_DISCOVERY_PERMISSION_SET must be an IAM Identity Center permission set name")
         for name in ("aws_sso_discovery_mode", "aws_org_discovery_mode", "learned_fp_mode",
                      "iam_potential_access_mode", "aws_usage_lookup_mode", "aws_secrets_inventory_mode",
-                     "scan_schedules_mode", "scan_sqs_mode", "scan_pubsub_mode", "scan_servicebus_mode",
+                     "scan_schedules_mode", "scan_sqs_mode",
                      "scan_change_feeds_mode"):
             if getattr(self, name) not in ("enabled", "disabled"):
                 raise ValueError(f"{name.upper()} must be 'enabled' or 'disabled'")

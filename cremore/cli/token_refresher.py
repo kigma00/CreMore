@@ -2,12 +2,8 @@
 
 On Kubernetes the kubelet refreshes projected service-account tokens. On one
 server (Docker Compose) nothing does, so this process takes an OAuth 2.0
-client-credentials token from the organization's IdP (Okta, Keycloak, Entra ID
-and others) and keeps it in a file that the cloud SDKs already read:
-``AWS_WEB_IDENTITY_TOKEN_FILE`` (AWS STS web identity), a GCP external-account
-``credential_source.file``, ``AZURE_FEDERATED_TOKEN_FILE`` (Entra workload
-identity federation) or a Vault connection's JWT login under
-``VAULT_CONNECTION_TOKEN_DIR``.
+client-credentials token from the organization's IdP and keeps it in a file
+that the AWS SDK reads through ``AWS_WEB_IDENTITY_TOKEN_FILE``.
 
 Configuration is a JSON file; secrets are environment variable names or file
 paths, never values. Each token is written atomically (a temporary file renamed

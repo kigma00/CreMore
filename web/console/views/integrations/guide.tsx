@@ -13,7 +13,7 @@ import { useL } from "@/console/text";
 import { SelectField } from "@/console/ui";
 import type { AwsIdentityView } from "@/console/views/integrations/aws-identity";
 import {
-  type Descriptor, generatedOf, listValue, madeKeyOf, type Method, permissionsFor, type ProviderConnection, type Purpose, type Values,
+  type Descriptor, listValue, type Method, permissionsFor, type ProviderConnection, type Purpose, type Values,
 } from "@/console/views/integrations/model";
 
 export type GuideAction =
@@ -34,28 +34,19 @@ export type GuideContext = {
 
 // Methods that reach a cloud or Vault as this installation's own identity, which can be the company IdP's.
 const AMBIENT: Record<string, string[]> = {
-  aws: ["role", "runtime"], gcp: ["adc"], azure: ["workload_identity"], entra_id: ["workload_identity"],
-  vault: ["jwt"], openbao: ["jwt"],
+  aws: ["role", "runtime"],
 };
 
 export function guideSteps(d: Descriptor, method: Method, conn: GuideConnection | null, context: GuideContext, L: Say): GuideStep[] {
   const steps = d.provider === "aws" ? awsSteps(method, conn, context.aws ?? null, L, context.openMachine, context.plans?.vault)
-    : d.provider === "azure" && method.id === "certificate" ? microsoftSteps(conn, context.plans, L)
-    : d.provider === "azure" && method.id === "workload_identity" ? identitySteps(conn, context.plans, L)
-    : d.provider === "confluence" && method.id === "service_account" ? confluenceSteps(d, method, L)
-    : d.provider === "slack" && method.id === "token" ? slackSteps(context.plans?.inventory?.audit_events === true, Boolean(context.stored), L)
-    : d.provider === "okta" && method.id === "made_key" ? oktaSteps(conn, context.target ?? conn?.target ?? {}, L) : [];
+    : d.provider === "slack" && method.id === "token" ? slackSteps(context.plans?.inventory?.audit_events === true, Boolean(context.stored), L) : [];
   if (context.openMachine && AMBIENT[d.provider]?.includes(method.id) && !steps.some(step => step.key === "aws-bootstrap")) steps.push(machineStep(d.provider, context.openMachine, L));
   return steps;
 }
 
 function machineStep(provider: string, open: () => void, L: Say): GuideStep {
-  const vault = provider === "vault" || provider === "openbao";
   return { key: "machine", title: L("회사 IdP 신원으로 접근 (선택)", "Reach it as the company IdP identity (optional)"),
-    text: vault ? L("JWT 로그인 토큰을 회사 IdP에서 받으려면 기계 신원에 이 클러스터의 토큰을 추가하고, 토큰 파일 이름을 idp-이름으로 두세요.",
-      "To take the JWT login token from the company IdP, add this cluster's token to the machine identity and name the token file idp-<name>.")
-      : L("클라우드 키나 이 컴퓨터의 로그인 없이 회사 IdP가 발급한 기계 토큰으로 접근하려면 기계 신원을 설정하세요.",
-        "To reach it with a machine token from the company IdP instead of a cloud key or this computer's sign-in, set the machine identity."),
+    text: L("회사 IdP의 기계 토큰으로 AWS에 접근하려면 기계 신원을 설정하세요.", "Set the machine identity to reach AWS with a token from your company IdP."),
     actions: [{ kind: "open", label: L("기계 신원 설정", "Set the machine identity"), onOpen: open, icon: "shield" }] };
 }
 
@@ -213,42 +204,6 @@ function awsSteps(method: Method, conn: GuideConnection | null, view: AwsIdentit
 
 /* ---------- Okta: an API service app signing with a key CreMore made ---------- */
 
-/** The Admin Console of an Okta org (acme.okta.com -> acme-admin.okta.com); none for a custom domain or the
- * okta.mil cell, whose admin host is not documented here. */
-export function oktaAdmin(host: string) {
-  const name = host.trim().toLowerCase().replace(/^https:\/\//, "").replace(/\/+$/, "");
-  const match = /^([a-z0-9-]+)\.(okta|oktapreview|okta-emea|okta-gov)\.com$/.exec(name);
-  return match ? `https://${match[1]}-admin.${match[2]}.com/admin/apps/active` : null;
-}
-
-function oktaSteps(conn: GuideConnection | null, target: Record<string, unknown>, L: Say): GuideStep[] {
-  const host = typeof target.organization === "string" ? target.organization : "";
-  const admin = oktaAdmin(host);
-  const steps: GuideStep[] = [{ key: "app", title: L("API 서비스 앱 만들기", "Create the API service app"),
-    text: L("Okta 관리 콘솔의 Applications and Resources → Applications → Create App Integration에서 API Services 앱을 만들고, General 탭의 클라이언트 ID를 위 칸에 넣은 뒤 키를 만듭니다.",
-      "Create an API Services app under Applications and Resources → Applications → Create App Integration in the Okta Admin Console, put the client ID from its General tab above and make the key."),
-    actions: admin ? [{ kind: "link", label: L("Okta 관리 콘솔 열기", "Open the Okta Admin Console"), href: admin, external: true }] : undefined }];
-  const made = madeKeyOf(conn);
-  if (!made) return steps;
-  // Only the public members, whatever else the stored part might hold.
-  const { kty, e, n, kid, alg, use } = made.public_jwk;
-  steps.push({ key: "key", title: L("공개 키 붙여 넣기", "Paste the public key"),
-    text: L(`앱의 General → Client Credentials → Edit에서 Public key / Private key를 고르고, Add key에 이 공개 키(kid ${made.kid})를 붙여 넣고 저장합니다.`,
-      `Under the app's General → Client Credentials → Edit, choose Public key / Private key, paste this public key (kid ${made.kid}) under Add key and save.`),
-    actions: [{ kind: "copy", label: L("공개 키 복사", "Copy the public key"), text: JSON.stringify({ kty, e, n, kid, alg, use }, null, 2) }] });
-  steps.push({ key: "grants", title: L("권한 주기", "Grant access"),
-    text: L("Okta API Scopes 탭에서 okta.users.read를 Grant하고(Grant는 Super Admin만 할 수 있습니다), Admin roles 탭에서 사용자 보기만 있는 역할(사용자 정의 역할: View users and their details, 리소스 세트: 모든 사용자)을 줍니다. 사용자 정의 역할을 쓸 수 없으면 Read-only Administrator를 줍니다. 앱 목록 옵션도 쓰면 okta.apps.read를 Grant하고, 역할에 View applications and their details를, 리소스 세트에 모든 앱을 더합니다(View client credentials는 주지 않습니다).",
-      "Grant okta.users.read on the Okta API Scopes tab (only a Super Admin can grant scopes), and on the Admin roles tab assign a role that only views users (a custom role with View users and their details over all users). Where custom roles are not available, assign Read-only Administrator. For the app list option, also grant okta.apps.read, add View applications and their details to the role and all apps to its resource set (not View client credentials).") });
-  if (made.previous?.kid) steps.push({ key: "retire", title: L("이전 키 비활성화·삭제", "Deactivate and delete the earlier key"),
-    text: L(`새 키로 권한 확인이 끝나면 같은 화면의 공개 키 목록에서 이전 키(kid ${made.previous.kid})를 Deactivate한 뒤 삭제합니다. 지우기 전까지는 그 키로도 로그인할 수 있습니다.`,
-      `Once the check passes with the new key, deactivate the earlier key (kid ${made.previous.kid}) in the same list of public keys, then delete it. Until then it can still sign in.`) });
-  return steps;
-}
-
-/* ---------- Slack: an org-ready app made from a manifest ---------- */
-
-/** The app an Enterprise org admin makes from a link: the user scopes the inventory reads with, org-wide
- * install (which asks for one bot scope), and no token rotation (a rotating token stops after 12 hours). */
 export function slackManifest(audit: boolean) {
   return {
     _metadata: { major_version: 2, minor_version: 1 },
@@ -284,169 +239,6 @@ function slackSteps(audit: boolean, stored: boolean, L: Say): GuideStep[] {
 }
 
 /* ---------- Confluence Cloud: a service account with an OAuth 2.0 client ---------- */
-
-const ATLASSIAN_ADMIN = "https://admin.atlassian.com";
-
-function confluenceSteps(d: Descriptor, method: Method, L: Say): GuideStep[] {
-  // The method's permissions are the OAuth scopes the credential is created with.
-  const scopes = permissionsFor(d, "exposure", method.id, {}).map(permission => permission.id);
-  return [
-    { key: "account", title: L("서비스 계정 만들기", "Create the service account"),
-      text: L("Atlassian 관리의 디렉터리 → 서비스 계정에서 계정을 만들고 Confluence 앱 접근을 줍니다.",
-        "Create the account under Directory → Service accounts in Atlassian Administration and give it Confluence app access."),
-      actions: [{ kind: "link", label: L("Atlassian 관리 열기", "Open Atlassian Administration"), href: ATLASSIAN_ADMIN, external: true }] },
-    { key: "space", title: L("공간 보기 권한 주기", "Let it view the space"),
-      text: L("검사할 공간의 공간 설정 → 권한에서 이 서비스 계정(또는 그 그룹)에 보기 권한을 줍니다.",
-        "In the space settings → permissions of the space to scan, give this service account (or its group) view permission.") },
-    { key: "oauth", title: L("OAuth 2.0 자격증명 만들기", "Create the OAuth 2.0 credential"),
-      text: L("서비스 계정의 자격증명 만들기 → OAuth 2.0에서 아래 범위를 고르고, 클라이언트 ID와 시크릿을 위 칸에 넣습니다. 시크릿은 만든 직후에만 보입니다.",
-        "Under the service account's Create credentials → OAuth 2.0, choose the scopes below and put the client ID and secret above. The secret shows only right after it is made."),
-      actions: [{ kind: "copy", label: L("범위 복사", "Copy the scopes"), text: scopes.join("\n") }] },
-  ];
-}
-
-/* ---------- Microsoft: one app registration for Entra ID, Azure and Azure DevOps ---------- */
-
-const ENTRA_APPS = "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade";
-// Microsoft Graph and the application permissions (app roles) a Microsoft connection asks for.
-const GRAPH_API = "00000003-0000-0000-c000-000000000000";
-const GRAPH_ROLES = {
-  "Application.Read.All": "9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30",
-  "Organization.Read.All": "498476ce-e0fe-48b0-b801-37ba7e2685c6",
-  "User.Read.All": "df021288-bdef-4463-88db-98f22de89214",
-  "AuditLog.Read.All": "b0afded3-3588-46d8-8b3d-9842eff778da",
-  "RoleManagement.Read.Directory": "483bed4a-2ad3-4361-a73b-c83ccdbdc53c",
-} as const;
-type GraphRole = keyof typeof GRAPH_ROLES;
-
-/** The certificate as one line of Base64 DER, the form `az ad app credential reset --cert` takes inline. */
-export function certificateBase64(pem: string) {
-  return pem.replace(/-----(BEGIN|END) CERTIFICATE-----/g, "").replace(/\s+/g, "");
-}
-
-/** The Microsoft Graph application permissions the chosen features need: renewing CreMore's certificate
- * (``renews``) reads the app's own registration (Application.Read.All), the inventory's sign-in and audit
- * options read the logs (AuditLog.Read.All), and its app permissions option the apps' Entra roles
- * (RoleManagement.Read.Directory). */
-export function graphRoles(purposes: string[], plans: GuideContext["plans"] = {}, renews = true): GraphRole[] {
-  const inventory = purposes.includes("inventory");
-  const logs = inventory && Boolean(plans?.inventory?.credential_sign_ins || plans?.inventory?.directory_audits);
-  return [...(renews || inventory ? ["Application.Read.All"] : []), ...(inventory ? ["Organization.Read.All"] : []),
-    ...(purposes.includes("identity") ? ["User.Read.All"] : []), ...(logs ? ["AuditLog.Read.All"] : []),
-    ...(inventory && plans?.inventory?.app_permissions === true ? ["RoleManagement.Read.Directory"] : [])] as GraphRole[];
-}
-
-/** The targets to grant on: the ones an onboarding chose, each under its own subscription (``located``), or a saved
- * connection's one target, whose subscription is the inventory's alone. */
-function rootsOf(conn: GuideConnection): (Root & { located: boolean })[] {
-  return conn.roots?.length ? conn.roots.map(root => ({ ...root, located: true }))
-    : [{ purposes: conn.purposes, target: conn.target as Record<string, unknown>, located: false }];
-}
-
-// The custom role the Azure roles option reads with at the tenant root management group.
-const ROLE_READER = "CreMore Role Assignment Reader";
-
-/** The Azure role assignments for ``who`` (the az assignee arguments): each target's own (its subscription, storage
- * account, Key Vaults) once, and the storage accounts the inventory reads key fingerprints from. */
-function azureRoles(who: string, conn: GuideConnection, plans: GuideContext["plans"]): string[] {
-  const assign = (role: string, scope: string) => `az role assignment create ${who} --role "${role}" --scope ${scope}`;
-  const roots = rootsOf(conn);
-  const lines = roots.flatMap(({ purposes, target, located }) => {
-    const where = located && target.subscription ? ` --subscription ${target.subscription}` : "";
-    const vault = (name: string) => `"$(az keyvault show --name ${name}${where} --query id -o tsv)"`;
-    const vaults = purposes.includes("vault") ? listValue(target.key_vaults) : [];
-    return [
-      ...(purposes.includes("inventory") && target.subscription ? [assign("Reader", `/subscriptions/${target.subscription}`)] : []),
-      ...(purposes.includes("exposure") && target.storage_account
-        ? [assign("Storage Blob Data Reader", `"$(az storage account show --name ${target.storage_account}${where} --query id -o tsv)"`)] : []),
-      ...vaults.map(name => assign("Key Vault Reader", vault(name))),
-      ...(plans?.vault?.read_values === true ? vaults.map(name => assign("Key Vault Secrets User", vault(name))) : []),
-    ];
-  });
-  const inventory = roots.some(root => root.purposes.includes("inventory"));
-  const keys = inventory
-    ? listValue(plans?.inventory?.storage_key_accounts).map(account => assign("Reader and Data Access", account)) : [];
-  // Azure roles of the tenant's apps are read at the root management group (its ID is the tenant ID) with a custom role
-  // that reads only role assignments and definitions.
-  const tenant = typeof conn.target.tenant === "string" ? conn.target.tenant : "";
-  const group = `/providers/Microsoft.Management/managementGroups/${tenant}`;
-  const root = inventory && plans?.inventory?.app_azure_roles === true && tenant ? [
-    `az role definition create --role-definition '${JSON.stringify({ Name: ROLE_READER, Description: "Reads Azure role assignments and role definitions",
-      Actions: ["Microsoft.Authorization/roleAssignments/read", "Microsoft.Authorization/roleDefinitions/read"], AssignableScopes: [group] })}'`,
-    assign(ROLE_READER, group)] : [];
-  return [...new Set([...lines, ...keys, ...root])];
-}
-
-function azureRolesText(L: Say, plans: GuideContext["plans"]) {
-  const root = plans?.inventory?.app_azure_roles === true;
-  return L(`구독 Reader, Storage Blob Data Reader, Key Vault Reader(메타데이터만)를 줍니다. 키 지문을 읽을 스토리지 계정에는 Reader and Data Access를 주며, 그 키로 계정의 모든 데이터에 접근할 수 있습니다. Key Vault 역할은 Azure RBAC 권한 모델의 Key Vault에 적용되고, Key Vault Secrets User는 값을 대조할 때만 줍니다. 예전 액세스 정책 모델의 Key Vault에는 비밀 List(키·인증서를 고르면 키 List, 인증서 List·Get)를 주고, 값을 대조할 때만 비밀 Get을 더합니다.${root ? ` 앱의 Azure 역할은 역할 할당·정의만 읽는 사용자 지정 역할(${ROLE_READER})을 만들어 테넌트 루트 관리 그룹(ID가 테넌트 ID)에 주고 읽습니다. 새 역할이 퍼지는 데 몇 분 걸리므로 할당이 역할을 찾지 못하면 잠시 뒤 할당 줄을 다시 실행합니다. 루트 관리 그룹은 테넌트에서 관리 그룹을 처음 쓸 때 만들어지며, 그 범위는 전역 관리자가 Azure 리소스 액세스 관리를 켜서 받는 사용자 액세스 관리자가 다룰 수 있습니다.` : ""} 역할 할당은 그 범위의 소유자, 사용자 액세스 관리자 또는 역할 기반 액세스 제어 관리자가 실행합니다.`,
-    `Give Reader on the subscription, Storage Blob Data Reader and Key Vault Reader (metadata only). A storage account whose key fingerprints are read takes Reader and Data Access, and its keys open all of the account's data. The Key Vault roles apply to vaults on the Azure RBAC permission model; Key Vault Secrets User is only for comparing values. A vault still on legacy access policies takes secret List (key List, and certificate List and Get, when chosen) and secret Get only for comparing values.${root ? ` The apps' Azure roles are read with a custom role (${ROLE_READER}) that only reads role assignments and definitions, given on the tenant root management group (its ID is the tenant ID). A new role takes a few minutes to spread, so if the assignment cannot find it, run the assignment line again shortly after. The root management group is made the first time the tenant uses management groups; a Global Administrator who turns on access management for Azure resources becomes User Access Administrator there and can work on it.` : ""} An Owner, User Access Administrator or Role Based Access Control Administrator on the scope runs the assignments.`);
-}
-
-function devopsSteps(target: Record<string, unknown>, L: Say): GuideStep[] {
-  const organization = typeof target.devops_organization === "string" ? target.devops_organization : "";
-  return organization ? [{ key: "devops", title: L("Azure DevOps에 이 앱 추가", "Add this app to Azure DevOps"),
-    text: L("조직이 이 테넌트의 Microsoft Entra에 연결돼 있어야 합니다. 조직 설정 → 사용자에서 이 앱(서비스 주체)을 Basic 액세스로 추가하고 검사할 프로젝트에 넣습니다. PAT 목록(Token Admin)은 Project Collection Administrators 그룹(조직 설정 → 권한)만 읽을 수 있고, 이 그룹에 넣으면 앱이 조직 전체 관리자가 되어 사용자 PAT를 폐기할 수도 있습니다. 권한 확인이 실제 목록 호출로 이 앱이 PAT 목록을 읽는지 확인합니다.",
-      "The organization must be connected to this tenant's Microsoft Entra ID. Under Organization settings → Users, add this app (its service principal) with Basic access and to the projects to scan. Only the Project Collection Administrators group (Organization settings → Permissions) can read the PAT list (Token Admin); in that group the app is a full organization administrator that can also revoke users' PATs. The access check confirms with a real list call that this app reads the PAT list."),
-    actions: [{ kind: "link", label: L("사용자 설정 열기", "Open Users"), href: `https://dev.azure.com/${encodeURIComponent(organization)}/_settings/users`, external: true },
-      { kind: "link", label: L("권한 설정 열기", "Open Permissions"), href: `https://dev.azure.com/${encodeURIComponent(organization)}/_settings/groups`, external: true }] }] : [];
-}
-
-/** The worker's own identity: a managed identity has no API permissions page, so its Graph app roles are assigned
- * to its service principal through Graph, and its Azure roles by object ID. */
-function identitySteps(conn: GuideConnection | null, plans: GuideContext["plans"], L: Say): GuideStep[] {
-  if (!conn) return [];
-  const roles = graphRoles(conn.purposes, plans, false);
-  const lines = azureRoles(`--assignee-object-id "$MI" --assignee-principal-type ServicePrincipal`, conn, plans);
-  const mi = `MI="<${L("신원의 개체(주체) ID", "the identity's object (principal) ID")}>"`;
-  return [
-    ...(roles.length ? [{ key: "graph", title: L("Microsoft Graph 앱 역할 할당", "Assign the Microsoft Graph app roles"),
-      text: L(`관리 ID는 포털의 API 권한 화면이 없어 Microsoft Graph 앱 역할 ${roles.join(", ")}을(를) Graph로 할당합니다. 권한 있는 역할 관리자가 Azure Cloud Shell(Bash)에서 MI에 신원의 개체(주체) ID를 넣고 실행합니다. 연합 자격 증명을 붙인 앱 등록이면 그 앱의 API 권한에서 같은 권한을 추가하고 관리자 동의를 줍니다.`,
-        `A managed identity has no API permissions page in the portal, so its Microsoft Graph app roles ${roles.join(", ")} are assigned through Graph. A Privileged Role Administrator runs these in Azure Cloud Shell (Bash) with MI set to the identity's object (principal) ID. An app registration with a federated credential adds the same permissions under its API permissions with admin consent.`),
-      actions: [{ kind: "copy" as const, label: L("권한 명령 복사", "Copy the permission commands"), text: [mi,
-        `GRAPH=$(az ad sp show --id ${GRAPH_API} --query id -o tsv)`,
-        ...roles.map(role => `az rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$MI/appRoleAssignments" --body "{\\"principalId\\":\\"$MI\\",\\"resourceId\\":\\"$GRAPH\\",\\"appRoleId\\":\\"${GRAPH_ROLES[role]}\\"}"`)].join("\n") }] }] : []),
-    ...(lines.length ? [{ key: "azure", title: L("Azure 역할 할당", "Assign Azure roles"), text: azureRolesText(L, plans),
-      actions: [{ kind: "copy" as const, label: L("역할 명령 복사", "Copy the role commands"), text: [mi, ...lines].join("\n") }] }] : []),
-    ...devopsSteps(conn.target as Record<string, unknown>, L)];
-}
-
-function microsoftSteps(conn: GuideConnection | null, plans: GuideContext["plans"], L: Say): GuideStep[] {
-  const steps: GuideStep[] = [{ key: "app", title: L("앱 등록 만들기", "Create the app registration"),
-    text: L("Microsoft Entra 관리 센터의 앱 등록에서 새 등록을 만듭니다(이 조직 디렉터리만, 리디렉션 URI 없음). 개요의 애플리케이션(클라이언트) ID를 위 칸에 넣고 인증서를 만드세요. Azure Cloud Shell(Bash)에서는 명령 하나로 만들 수 있습니다.",
-      "Create a new registration under App registrations in the Microsoft Entra admin center (this directory only, no redirect URI). Put the application (client) ID from its overview above and make the certificate. In Azure Cloud Shell (Bash) one command makes it."),
-    actions: [{ kind: "link", label: L("앱 등록 열기", "Open app registrations"), href: ENTRA_APPS, external: true },
-      { kind: "copy", label: L("만들기 명령 복사", "Copy the create command"),
-        text: 'APP_ID=$(az ad app create --display-name "CreMore" --sign-in-audience AzureADMyOrg --query appId -o tsv)\naz ad sp create --id "$APP_ID"\necho "$APP_ID"' }] }];
-  const made = generatedOf(conn);
-  const app = (conn?.target.auth as Record<string, string> | undefined)?.client_id;
-  if (!conn || !made || !app) return steps;
-  const target = conn.target as Record<string, unknown>;
-  const purposes = conn.purposes;
-  const pem = made.certificate;
-  steps.push({ key: "certificate", title: L("인증서 올리기", "Upload the certificate"),
-    text: L(`앱 등록의 '인증서 및 비밀 → 인증서 → 인증서 업로드'에 받은 파일을 올리거나 명령을 실행합니다. 올라가는 것은 공개 인증서(지문 ${made.thumbprint})뿐입니다.`,
-      `Upload the downloaded file under 'Certificates & secrets → Certificates → Upload certificate' of the app registration, or run the command. Only the public certificate (thumbprint ${made.thumbprint}) goes there.`),
-    actions: [{ kind: "link", label: L("인증서 받기", "Download the certificate"), icon: "download",
-      href: `data:application/x-pem-file;charset=utf-8,${encodeURIComponent(pem)}`, download: `CreMore-${made.thumbprint.slice(0, 8)}.pem` },
-      { kind: "copy", label: L("올리기 명령 복사", "Copy the upload command"),
-        text: `az ad app credential reset --id ${app} --append --cert "${certificateBase64(pem)}"` }] });
-  if (!purposes.length) return steps;
-  const roles = graphRoles(purposes, plans);
-  const signIns = roles.includes("AuditLog.Read.All") && plans?.inventory?.credential_sign_ins === true;
-  steps.push({ key: "graph", title: L("Microsoft Graph 권한과 관리자 동의", "Microsoft Graph permissions and admin consent"),
-    text: L(`애플리케이션 권한 ${roles.join(", ")}을(를) 추가하고, 권한 있는 역할 관리자가 API 권한 화면에서 관리자 동의를 줍니다(명령의 admin-consent 줄은 전역 관리자가 실행합니다). Application.Read.All은 앱이 자기 인증서를 교체할 때도 씁니다.${signIns ? " 로그인 기록은 테넌트에 Microsoft Entra ID P1 또는 P2가 있어야 읽힙니다." : ""}`,
-      `Add the application permissions ${roles.join(", ")}; a Privileged Role Administrator grants admin consent on the API permissions page (the command's admin-consent line needs a Global Administrator). Application.Read.All is also how the app renews its own certificate.${signIns ? " Sign-in logs need Microsoft Entra ID P1 or P2 in the tenant." : ""}`),
-    actions: [{ kind: "copy", label: L("권한 명령 복사", "Copy the permission commands"),
-      text: `az ad app permission add --id ${app} --api ${GRAPH_API} --api-permissions ${roles.map(role => `${GRAPH_ROLES[role]}=Role`).join(" ")}\naz ad app permission admin-consent --id ${app}` }] });
-  const lines = azureRoles(`--assignee ${app}`, conn, plans);
-  if (lines.length) steps.push({ key: "azure", title: L("Azure 역할 할당", "Assign Azure roles"), text: azureRolesText(L, plans),
-    actions: [{ kind: "copy", label: L("역할 명령 복사", "Copy the role commands"), text: lines.join("\n") }] });
-  if (made.previous?.thumbprint) steps.push({ key: "retire", title: L("이전 인증서 지우기", "Remove the earlier certificate"),
-    text: L(`새 인증서로 권한 확인이 끝나면 앱 등록의 '인증서 및 비밀 → 인증서'에서 이전 인증서(지문 ${made.previous.thumbprint})를 삭제합니다. 지우기 전까지는 만료일까지 그 인증서로도 로그인할 수 있습니다.`,
-      `Once the check passes with the new certificate, delete the earlier one (thumbprint ${made.previous.thumbprint}) under 'Certificates & secrets → Certificates' of the app registration. Until then it can still sign in until it expires.`) });
-  return [...steps, ...devopsSteps(target, L)];
-}
 
 export function SetupGuide({ steps, onCopy }: { steps: GuideStep[]; onCopy: (text: string) => void }) {
   const L = useL();

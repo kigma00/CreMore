@@ -14,7 +14,7 @@ workload identities) for organisations that require isolation.
 
 ## Components
 
-For GCP, the optional `gcp.adcSecretName` / `gcp.adcSecretKey` values mount an existing ADC configuration only into the worker. `gcp.quotaProject` sets its quota project. Leave the file mount unset for an attached GKE workload identity. See the [GCP deployment and collection guide](../../docs/integration/GCP_TOTAL_GUIDE_KO.md).
+The application image contains GitHub, AWS, Notion and Slack provider integrations.
 
 | Component | Image | Entrypoint | Port |
 | --- | --- | --- | --- |
@@ -69,7 +69,7 @@ out the application. Credential-envelope migration is a separate offline,
 backup-confirmed operation; this Job does not receive the keys it would need.
 
 Use distinct service accounts for every role. In isolation, the existing
-`aws`, `gcp`, and `azure` workload identity values apply only to the collector;
+`aws` workload identity values apply only to the collector;
 `isolation.remediatorIdentity` supplies separate action identities. API,
 control, web, SIEM and migration accounts must have no cloud identity bindings,
 including externally managed bindings. The chart rejects shared configured
@@ -254,8 +254,6 @@ installation default, and events need its `event_mode: ENABLED`.
 | --- | --- |
 | `scanning.schedulesMode` | `SCAN_SCHEDULES_MODE`: `enabled` (default) allows the worker to honour a profile's `schedule_minutes`; `disabled` hard-locks schedules off |
 | `scanning.sqs.mode` | `SCAN_SQS_MODE`: allows queue consumption (default), or `disabled` to hard-lock it off |
-| `scanning.pubsub.mode` | `SCAN_PUBSUB_MODE`: allows reading the customer's own Pub/Sub subscription (default), or `disabled` |
-| `scanning.serviceBus.mode` | `SCAN_SERVICEBUS_MODE`: allows reading the customer's own Service Bus queue or topic subscription (default), or `disabled` |
 | `scanning.changeFeedsMode` | `SCAN_CHANGE_FEEDS_MODE`: allows change feeds on approved repositories and spaces (default), or `disabled` |
 | `scanning.sqs.queueURL` | `SCAN_SQS_QUEUE_URL` -- optional pin |
 | `scanning.sqs.profileId` | `SCAN_SQS_PROFILE_ID` -- optional pin |
@@ -344,33 +342,6 @@ login. The web pod receives neither the Vault token nor the projected token, and
 neither does the API unless `config.sealing.vaultPath` is set (below).
 `secretStore.authMode=token` remains compatible with existing installs and reads
 `secretStore.tokenKey` from the same Secret.
-
-### Azure workload identity and other Vault clusters
-
-```yaml
-azure:
-  workloadIdentity:
-    enabled: true
-    clientId: 00000000-0000-0000-0000-000000000000   # the Entra application
-    tenantId: ""                                      # empty: the webhook's tenant
-    tokenExpirationSeconds: 3600
-vaultConnections:
-  tokens:
-    - name: vault-pay        # a connection's server_auth.token_file
-      audience: vault-pay    # the audience that cluster's Kubernetes or JWT role expects
-  expirationSeconds: 600
-  egress:
-    - cidr: 10.20.0.0/16
-      port: 8200
-```
-
-Azure labels the API and worker pods `azure.workload.identity/use: "true"` (the
-selector is unchanged) and annotates their ServiceAccounts with the client and
-tenant IDs, so the AKS webhook injects `AZURE_FEDERATED_TOKEN_FILE` for
-`DefaultAzureCredential`. Each `vaultConnections.tokens` entry projects one
-audience-bound token into the worker under `VAULT_CONNECTION_TOKEN_DIR`; it is
-never the installation's own secret-store token. See
-[machine identity](../../docs/MACHINE_IDENTITY.md).
 
 ### The sealing master in Vault
 

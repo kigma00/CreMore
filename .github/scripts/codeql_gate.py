@@ -27,14 +27,6 @@ ACCEPTED = {
 # acceptances bind the rule, path and CodeQL primary-location line fingerprint;
 # an unrelated sink in the same file, or a changed sink, still fails the gate.
 ACCEPTED_SINKS = {
-    ("py/weak-sensitive-data-hashing", "gcp/backend/cremore_gcp_provider/metadata/adapter.py", "71eb809e9ebf85a6:1"): (
-        "private GCP payload matching uses domain-separated HMAC-SHA256 under the installation fingerprint key; "
-        "it is not password storage, and changing its digest would invalidate stored comparison evidence"
-    ),
-    ("js/clear-text-storage-of-sensitive-data", "web/console/gcp-oauth.ts", "25ac90b4c53a1b30:1"): (
-        "sessionStorage retains only the tab's random browser binding, OAuth state and flow metadata, never provider "
-        "tokens; the API requires the original authenticated admin, binding and a 15-minute server expiry"
-    ),
     ("js/clear-text-storage-of-sensitive-data", "web/console/views/integrations/auth-first.tsx", "1a9fa2f1a9cf8ebe:1"): (
         "sessionStorage retains only an onboarding draft UUID and random browser binding, never submitted credentials; "
         "the API requires the original authenticated admin, binding and a 30-minute server expiry"

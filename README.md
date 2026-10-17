@@ -55,12 +55,12 @@
 
 ### CreMore는 조직의 자격증명 노출과 공급자 메타데이터를 수집하고, 마스킹된 증거와 위험도로 대응을 돕는 자체 호스팅 보안 플랫폼입니다.
 
-CreMore의 콘텐츠 탐지는 S3, Google Cloud Storage, Azure Blob Storage, GitHub, GitLab, Bitbucket, Azure DevOps Repos(Git·TFVC), Notion, Confluence에서 승인된 범위만 읽습니다. **수집한 비밀 원문은 메모리에서만 처리하고 설치별 HMAC fingerprint와 필요한 메타데이터·마스킹된 증거만 저장합니다.** GCP도 같으며, 암호화해서 복구 가능한 값이나 Base64 원문을 보관하지 않습니다. 공급자에 접속하기 위해 관리자가 입력한 인증 자격증명은 별도의 봉인 저장 계약을 따릅니다.
+CreMore의 콘텐츠 탐지는 AWS S3, GitHub, Notion에서 승인된 범위만 읽습니다. Slack은 자격증명 메타데이터와 알림에 사용합니다. **수집한 비밀 원문은 메모리에서만 처리하고 설치별 HMAC fingerprint와 필요한 메타데이터·마스킹된 증거만 저장합니다.** 공급자에 접속하기 위해 관리자가 입력한 인증 자격증명은 별도의 봉인 저장 계약을 따릅니다.
 
 ### CreMore가 제공하는 핵심 가치:
 
 * **원문 없는 증거 (No Raw Secrets)**
-  일반 콘텐츠 탐지에서는 마스킹된 줄과 keyed fingerprint만 남기고, "원본 열기"는 담당자 본인의 공급자 권한으로 열립니다. GCP의 명시적 값 저장 옵션은 위 예외를 따릅니다.
+  일반 콘텐츠 탐지에서는 마스킹된 줄과 keyed fingerprint만 남기고, "원본 열기"는 담당자 본인의 공급자 권한으로 열립니다.
 
 * **설명 가능한 위험 점수 (Explainable Risk)**
   악용 가능성, 자격증명 영향도, 권한 범위, 노출 정도 4개 축으로 0–100점을 산출하고, 각 축의 근거를 함께 보여줍니다.
@@ -80,11 +80,11 @@ CreMore의 콘텐츠 탐지는 S3, Google Cloud Storage, Azure Blob Storage, Git
 ## Features
 
 * **자격증명 탐지** — 공개 문서 기반 탐지기, RE2 정규식, base64/UTF-16/escape 디코딩. 연결별 승인 범위와 읽기 한도를 적용합니다.
-* **공급자 메타데이터** — schema 2 어댑터는 GitHub, GitLab, GCP, Atlassian·Bitbucket, Notion, Azure Key Vault·Entra ID·Resource Manager, Azure DevOps(PAT 발급 목록)를 지원합니다. 수집 가능한 객체·권한·값 접근은 공급자별 계약에 따르며, 값은 연결의 capability·옵션·승인 범위를 모두 켠 경우에만 읽어 메모리에서 지문화합니다. GCP를 포함해 수집한 비밀 원문은 저장하지 않습니다.
-* **금고 보관 대조** — AWS IAM·CloudTrail과 공급자 발급 목록, 평문 노출, 금고(AWS Secrets Manager·SSM Parameter Store, HashiCorp Vault·OpenBao, GCP Secret Manager, Azure Key Vault, GitLab CI/CD 변수)를 대조해 노출·발급 자격증명마다 금고 보관 확인·미발견·판단 불가를 나눕니다. 금고 값은 고객 환경의 `cremore-coverage` CLI가 읽고, AWS Secrets Manager·SSM과 이 설치의 Vault/OpenBao는 관리자가 켜면 CreMore worker가 수동 또는 설정한 주기로 읽습니다. 값이나 해시를 주지 않는 발급 목록(Azure DevOps·Notion PAT 등)은 판단 불가로 남습니다.
+* **공급자 메타데이터** — schema 2 어댑터는 GitHub, Notion, Slack을 지원합니다. AWS 수집은 별도 경로를 사용합니다. 수집 가능한 객체·권한·값 접근은 공급자별 계약에 따르며, 값은 연결의 capability·옵션·승인 범위를 모두 켠 경우에만 읽어 메모리에서 지문화합니다. 수집한 비밀 원문은 저장하지 않습니다.
+* **금고 보관 대조** — AWS IAM·CloudTrail과 공급자 발급 목록, 평문 노출, 금고(AWS Secrets Manager·SSM Parameter Store)를 대조해 노출·발급 자격증명마다 금고 보관 확인·미발견·판단 불가를 나눕니다. 금고 값은 고객 환경의 `cremore-coverage` CLI가 읽고, AWS Secrets Manager·SSM은 관리자가 켜면 CreMore worker가 수동 또는 설정한 주기로 읽습니다. 값이나 해시를 주지 않는 발급 목록은 판단 불가로 남습니다.
 * **CloudTrail 로그 수집** — Event History 또는 기존 trail의 S3 로그에서 STS 발급·사용 이벤트를 모읍니다. S3 로그는 CloudTrail 경로 형식(`AWSLogs/[<조직 ID>/]<계정 ID>/CloudTrail/<리전>/<날짜>/`)을 따라 계정·리전·기간의 파일만 읽으므로, 조직 전체 prefix를 모든 계정에 같이 써도 각 계정은 자기 로그만 읽습니다.
 * **멀티 계정 AWS 온보딩** — IAM Identity Center(모든 IdP), IAM role, IAM user 실행 신원을 승인하고, 계정마다 세 가지 접근 방식 중 하나로 닿습니다: 배포한 읽기 전용 scanner role(`ROLE`), 실행 신원 자신의 계정(`RUNTIME_IDENTITY`), 또는 **아무것도 배포하지 않고** Identity Center 권한 세트가 자격증명을 발급하는 `SSO_PERMISSION_SET`. AWS Organizations나 Identity Center 할당에서 계정을 찾아 등록할 수도 있습니다. 조사, 조치는 각 자격증명이 속한 계정에서 실행.
-* **자격증명 메타데이터** — 인증 주체, 생성, 최근 사용, CloudTrail 관측 사용, IAM 정책상 실제 권한과 선별 시뮬레이션. GitHub/Notion은 공급자가 보고한 권한 범위. 노출된 GitHub 토큰은 Enterprise 감사 로그의 토큰 해시로 사용 기록(최근 7일 Git 이벤트 포함)과, Azure SAS는 서명을 오프라인으로 재계산해 서명한 Storage 키와 연결합니다. 어느 쪽도 현재 유효성 검증은 아닙니다.
+* **자격증명 메타데이터** — 인증 주체, 생성, 최근 사용, CloudTrail 관측 사용, IAM 정책상 실제 권한과 선별 시뮬레이션. GitHub/Notion은 공급자가 보고한 권한 범위. 노출된 GitHub 토큰은 Enterprise 감사 로그의 토큰 해시로 사용 기록(최근 7일 Git 이벤트 포함)과 연결합니다. 어느 쪽도 현재 유효성 검증은 아닙니다.
 * **GitHub 조직·Enterprise 관리정보** — GitHub App(App ID 또는 Client ID)으로 수집하며 매 수집 첫 요청(`GET /app`)에서 키가 설정한 App의 것인지 확인합니다. 읽기 항목별 필요 App 권한과 조직별 설치 상태를 보여 주고, 자격증명을 수집하지 않고 한 조직의 설치 재확인이나 App 설치 목록 새로고침만 할 수 있습니다. Enterprise 감사 로그는 봉인한 classic PAT로만 읽고, 감사 기록이 가리키는 자격증명을 정확한 식별자로만 연결해 관계별로 봅니다. Actions 실행 기간, 읽을 감사 로그, Enterprise만 읽기, 실행 시간 상한을 연결마다 정합니다.
 * **관리정보 수집 제어** — 어느 공급자의 수집이든 일시중지·재개·중지할 수 있습니다(일시중지는 실행 시작 후 최대 6시간). 실행 상세에서 source별 결과와 사유를 한국어·영어 문구로 보고, 공급자 고유 형식(native export)을 JSON으로 받습니다.
 * **GitHub Enterprise Server 지원** — 연결에 엔터프라이즈 호스트를 지정하면 검증, 권한 실측, 원본 링크가 그 호스트를 사용. 옵션으로 교차 호스트 검증.
@@ -101,10 +101,6 @@ CreMore의 콘텐츠 탐지는 S3, Google Cloud Storage, Azure Blob Storage, Git
 자세한 경계와 지원 범위는 [아키텍처 문서](docs/ARCHITECTURE.md), 전체 API 경로는 [API 문서](docs/API.md)를 참고하세요.
 금고 보관 대조의 판정 기준과 수집 경로는 [자격증명 보관 대조 문서](docs/CREDENTIAL_COVERAGE.md), 공급자별 구현 상태와 검증 범위는
 [공급자 인벤토리 구현 기록](docs/PROVIDER_INVENTORY_IMPLEMENTATION.md)과 각 공급자 디렉터리의 README에 있습니다.
-
-GCP 프로젝트 연결, Worker ADC 설정, 키·Secret 수집, 자동 변경 추적과 값 저장은 [GCP 통합 기술 명세·사용 설명서](docs/integration/GCP_TOTAL_GUIDE_KO.md)를 참고하세요.
-
-대시보드에서 Google 로그인으로 연결하려면 [GCP Google 연결 설정·사용 설명서](docs/integration/GCP_DASHBOARD_OAUTH_KO.md)를 참고하세요. 관리자 OAuth 앱 설정 후 프로젝트 선택·수집·재인증을 대시보드에서 진행할 수 있습니다. 별도 GCP Worker나 Docker는 필요하지 않습니다.
 
 ## Technologies
 
@@ -140,14 +136,10 @@ AWS뿐 아니라 회사 VM·물리 서버·Kubernetes에도 설치할 수 있습
 
 이미지는 x86-64와 ARM64(Apple Silicon Mac, ARM Linux) 모두 빌드됩니다. Docker Compose 방식은 호스트의 Python, Node.js, PostgreSQL을 사용하지 않습니다. 코드를 직접 개발한다면 Python 3.12+, Node.js 20.9+와 npm, PostgreSQL이 추가로 필요합니다.
 
-Azure Key Vault·Entra·Resource Manager 메타데이터를 수집하거나 Azure Blob Storage를 스캔하려면 **Worker를 실행하는 Python 환경**에 Azure 인증
-패키지가 필요합니다. Azure DevOps는 개인 액세스 토큰으로 접속하므로 이 패키지가 필요하지 않습니다. 소스에서 직접 설치할 때는 저장소 루트에서
-`python -m pip install ".[azure]"`를 실행하세요. GCP도 함께 쓰면 `".[gcp,azure]"`를
-사용합니다. Azure 어댑터는 `DefaultAzureCredential`로 Worker의 실행 신원을 해석합니다.
-기본 Docker 이미지의 잠금 파일은 GCP·Azure 인증 패키지를 함께 포함합니다. 잠금 파일은
-`uv pip compile pyproject.toml --extra gcp --extra azure --universal --python-version 3.12 --generate-hashes --no-header -o requirements.txt`로
-재생성할 수 있습니다. API와 Worker를 따로 배포하면 API에만 설치해서는
-수집할 수 없습니다.
+지원하는 연동 대상은 **GitHub, AWS, Notion, Slack**입니다. 콘텐츠 검사는 GitHub 저장소,
+AWS S3, Notion 페이지를 대상으로 합니다. 잠금 파일은
+`uv pip compile pyproject.toml --universal --python-version 3.12 --generate-hashes --no-header -o requirements.txt`로
+재생성할 수 있습니다.
 
 > ⚠️ 본인이 관리하거나 명시적으로 허가받은 계정, 저장소만 스캔하세요. Docker Compose 구성은 이 PC(`localhost`)에서만 열리는 **1인 운영용**입니다. 여러 사람이 로그인하는 공용 서버에서 실행하거나 인터넷에 노출하지 마세요.
 
@@ -318,7 +310,7 @@ export SEALING_PASSPHRASE && docker compose up -d && unset SEALING_PASSPHRASE
 
 ## Scanning AWS
 
-S3를 스캔하거나 AWS 자격증명·금고를 조사하려면 이 PC에 이미 로그인한 AWS CLI 자격증명을 그대로 씁니다. AWS를 쓰지 않으면(예: GitHub·GitLab·Notion·Azure만 연결) 이 단계는 필요 없습니다. 장기 액세스 키 대신 **IAM Identity Center**를 권장합니다.
+S3를 스캔하거나 AWS 자격증명·금고를 조사하려면 이 PC에 이미 로그인한 AWS CLI 자격증명을 그대로 씁니다. AWS를 쓰지 않으면(예: GitHub·Notion·Slack만 연결) 이 단계는 필요 없습니다. 장기 액세스 키 대신 **IAM Identity Center**를 권장합니다.
 
 ```bash
 # 1) SSO 프로필 구성 후 로그인
@@ -365,13 +357,13 @@ docker compose --env-file .env --env-file .env.public   -f docker-compose.yml -f
 
 배포 후 콘솔(`/`) 사용 순서(권장 역할 분리: `Viewer`, `Analyst`, `Remediator`, `Admin`):
 
-1. **연동** — Admin이 **연동 서비스**에서 공급자를 고르고 연결 마법사에서 용도(노출 검사·발급 목록·Secret 저장소·조치 등)와 인증 방식을 정해 연결합니다. 토큰은 CreMore가 암호화(AES-256-GCM)해 저장하고, 이미 Vault/OpenBao를 쓰면 `vault://<path>` 참조를 넣습니다. S3는 AWS 계정 역할로, Google Cloud Storage와 Azure Blob Storage는 Worker 자신의 클라우드 신원으로 읽으므로 비밀을 입력하지 않습니다. GitLab Self-Managed·Azure DevOps Server 같은 자체 설치 제품은 서버 주소를 함께 입력합니다.
+1. **연동** — Admin이 **연동 서비스**에서 GitHub, AWS, Notion, Slack 중 하나를 고르고 연결 마법사에서 용도(노출 검사·발급 목록·Secret 저장소·조치 등)와 인증 방식을 정해 연결합니다. 토큰은 CreMore가 암호화(AES-256-GCM)해 저장하고, 비밀 저장소를 쓰면 `vault://<path>` 참조를 넣습니다. S3는 AWS 계정 역할로 읽습니다.
 2. **권한 점검** — 마법사의 마지막 단계에서 CreMore가 인증 주체와 읽기 권한을 확인합니다. 나중에는 연동 메뉴의 **권한 다시 확인**으로 다시 점검합니다.
 3. **검사 대상** — Admin이 연동 메뉴의 **검사 대상 설정**에서 catalog를 갱신하고 검사할 저장소·페이지·버킷/prefix만 고릅니다. 저장한 정확한 범위가 승인된 scope profile이 되며, 연결했다고 조직 전체가 자동으로 스캔되지 않습니다.
 4. **수집·스캔** — 승인한 범위는 매일 전체 검사(기본 02:00~06:00 KST 사이 범위별 시각)와 변경 감지 스캔이 자동으로 돌고, 연동 메뉴의 **지금 수집**으로 바로 실행할 수도 있습니다. **수집·탐지 로그**에서 진행·검사 시간·배제 항목·실패 사유를 봅니다. Analyst 이상은 여기서 실행을 멈추거나 다시 실행합니다.
 5. **결과 검토** — **노출된 Credential**·**Credential 목록**에서 행을 열면 상세 패널에 마스킹된 증거, 위험 근거, 메타데이터·권한, 사용 내역, "원본 열기" 링크가 있고, 오탐·해결을 기록합니다. 담당자와 부서는 **담당자 및 부서 배정**에서 정하고, 상세 패널의 **대응 요청**으로 담당자에게 Slack DM·메일 링크를(필요하면 담당 팀 채널에도) 보냅니다. 담당자는 링크에서 회사 로그인 후 조치 결과를 보고하고, 이후 검사가 제거를 확인합니다.
-6. **Secret 저장소 대조 (옵션)** — **Secret 저장소**에서 발급 목록(AWS IAM·CloudTrail 등)과 금고(AWS Secrets Manager·SSM, Vault·OpenBao, GCP Secret Manager 등)의 대조 결과를 봅니다. 금고 값은 연결마다 한 번 보여 주는 제출 토큰으로 고객 환경의 `cremore-coverage`가 보내거나, 서버 수집을 켠 AWS 금고와 이 설치의 Vault/OpenBao는 CreMore worker가 직접 읽습니다. 결과는 자격증명마다 금고 보관 확인·미발견·판단 불가와 그 근거로 표시됩니다.
-7. **발급 목록·메타데이터 (옵션)** — 마법사에서 발급 목록 용도를 켠 연결(GitHub App, GitLab, GCP, Notion, Azure, Slack 등)의 수집 결과는 **Credential 목록**과 **메타데이터 수집 현황**에 모입니다. 퇴사자가 소유한 자격증명은 **퇴사자 Credential**에서 봅니다.
+6. **Secret 저장소 대조 (옵션)** — **Secret 저장소**에서 발급 목록(AWS IAM·CloudTrail 등)과 금고(AWS Secrets Manager·SSM)의 대조 결과를 봅니다. 금고 값은 연결마다 한 번 보여 주는 제출 토큰으로 고객 환경의 `cremore-coverage`가 보내거나, 서버 수집을 켠 AWS 금고는 CreMore worker가 직접 읽습니다. 결과는 자격증명마다 금고 보관 확인·미발견·판단 불가와 그 근거로 표시됩니다.
+7. **발급 목록·메타데이터 (옵션)** — 마법사에서 발급 목록 용도를 켠 연결(GitHub App, AWS, Notion, Slack)의 수집 결과는 **Credential 목록**과 **메타데이터 수집 현황**에 모입니다. 퇴사자가 소유한 자격증명은 **퇴사자 Credential**에서 봅니다.
 8. **동작 설정** — Admin이 **환경 설정**에서 공급자 검증(기본 켜짐; 발견한 키를 발급 공급자에 보내 활성 여부를 확인하므로 공급자 활동 로그에 남습니다), 교차 호스트 확인, 스캔 시작 조건(매일 전체 검사 주기·시작 시각, 변경 감지, 큐 구독)과 Slack 탐지 알림을 정하고, **연동 서비스**의 기타 설정에서 연락 발송(Slack 봇·메일·콘솔 주소)과 대응 알림 채널을 정합니다. AWS의 읽기 전용 조사(실제 사용 내역·잠재 접근 권한·Secrets Manager 인벤토리)는 **연동 서비스**의 AWS 설정에서 켭니다. 각 변경은 **Audit Log**에 남습니다.
 9. **대응 (옵션)** — Remediator가 상세 패널의 조치 탭에서 조치 계획을 요청하고 다른 Admin이 **조치 승인**에서 승인하면 같은 plan hash로 실행을 요청합니다. 소유자 승인이 필요한 조치(키 비활성화·삭제·새 키 게시, 관리자가 이 요구를 끄지 않은 설치)에서는 키 소유자의 승인(Slack·메일 링크, 로컬 설치는 운영자 기록)도 기다리며, 공개 노출된 키는 Admin이 사유를 남기고 바로 비활성화한 뒤 소유자에게 알릴 수 있습니다. 실제 변경은 설치 정책에서 명시적으로 켠 경우에만 실행됩니다.
 
@@ -403,17 +395,10 @@ CreMore/
 │   ├── console/             # 콘솔 셸·데이터·레이어·공통 UI와 views/<화면>/
 │   ├── components/          # locale·theme·표시 시간대·API 코드 문구
 │   └── lib/                 # API 클라이언트·세션·순수 타입·스캔 범위 모델
-├── aws/                    # backend/ Python 라이브러리·테스트
-├── gcp/                    # backend/ + standalone/cremore_gcp (shared library)
+├── aws/                    # backend/ Python 라이브러리
 ├── github/                 # backend/
-├── gitlab/                 # backend/
 ├── notion/                 # backend/
-├── atlassian/              # Confluence·Bitbucket 공유 backend/
-├── azure/                  # Key Vault·Entra·ARM·DevOps PAT 메타데이터, Blob·DevOps 콘텐츠 backend/
-├── vault/                  # Vault/OpenBao backend/
-├── okta/ keycloak/         # 퇴사자 점검의 IdP 사용자·앱 목록 backend/
 ├── slack/                  # Enterprise Grid 앱 발급 목록 backend/
-├── website/                # 확인된 회사 도메인의 외부 노출 검사 backend/
 ├── deploy/                  # docker-compose(1인·팀 SSO·격리), Helm 차트, CloudFormation
 ├── docs/                    # ARCHITECTURE, API, 스크린샷, 로고
 └── docker-compose.yml
@@ -453,33 +438,26 @@ OIDC 로그인과 세션 cookie는 oauth2-proxy가, 인증 전달은 Next 서버
 ## Development
 
 Python 3.12+ 가상환경에서 시작하세요. 아래 각 명령 블록은 저장소 루트 기준입니다.
-`dev` extra에는 pytest·Ruff와 Atlassian JSON Schema·날짜 형식 검증 의존성이 포함됩니다.
-`gcp`·`azure` extra는 GCP·Azure 인증 검사에 필요하며, CI도 같은 extra 조합을 설치합니다.
+`dev` extra에는 Ruff가 포함됩니다.
 
 ```bash
-python -m pip install -e ".[dev,gcp,azure]"
-AWS_EC2_METADATA_DISABLED=true python -m pytest -q -ra
-python -m ruff check cremore aws/backend gcp/backend github/backend gitlab/backend notion/backend atlassian/backend azure/backend vault/backend
+python -m pip install -e ".[dev]"
+python -m ruff check cremore aws/backend github/backend notion/backend slack/backend
 ```
 
-pytest 경로를 생략하면 `pyproject.toml`의 `testpaths`에 등록된 플랫폼·공급자 테스트를 함께 수집합니다.
-PowerShell에서는 pytest 실행 전에 `$env:AWS_EC2_METADATA_DISABLED='true'`를 설정하고
-`python -m pytest -q -ra`를 실행합니다. 일반 단위 검사는 합성 fixture와
-메모리/SQLite 저장소를 사용합니다. PostgreSQL 동시성 검사는 격리한 일회용 DB의
+현재 저장소의 자동 테스트 코드는 제거되어 있습니다. PostgreSQL 동시성 검사는 격리한 일회용 DB의
 `CREMORE_TEST_POSTGRES_URL`로 별도 실행하며 운영 DB를 사용하지 않습니다.
 
 ```bash
 cd web
 npm ci --ignore-scripts
-npm test
 npx tsc --noEmit
 npm run build
-npm run test:browser
 ```
 
 브라우저 검사는 Google Chrome이 필요합니다. Node.js 최소 버전은 20.9이며,
 CI는 22.23.2를 사용합니다.
-GCP 공용 라이브러리(`gcp/standalone`)·Helm·wheel 검사와 환경별 조건은
+Helm·wheel 검사와 환경별 조건은
 [팀 지침의 검증 명령](docs/AI_TEAM_CODING_GUIDE.md#10-테스트빌드-명령)을 참고하세요.
 Ruff의 기존 진단, 환경별 skip, 로컬·원격 CI의 실행 결과는
 [리팩터링 보고서](docs/REFACTOR_REPORT.md)에 구분해 기록합니다.

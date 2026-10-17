@@ -42,15 +42,10 @@ ORIGIN_SKEW = timedelta(hours=24)
 
 _QUEUE_HOST = re.compile(r"sqs\.[a-z0-9-]+\.amazonaws\.com(?:\.cn)?")
 _QUEUE_PATH = re.compile(r"/[0-9]{12}/[A-Za-z0-9_-]+(?:\.fifo)?")
-# projects/{project}/subscriptions/{name}: Google's own naming rules for both parts.
-_SUBSCRIPTION = re.compile(r"projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/subscriptions/(?!goog)[A-Za-z][A-Za-z0-9._~+%-]{2,254}")
-_BUS_NAMESPACE = re.compile(r"[A-Za-z][A-Za-z0-9-]{4,48}[A-Za-z0-9]\.servicebus\.windows\.net")
-_BUS_ENTITY = re.compile(r"/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,258}[A-Za-z0-9])?"
-                         r"(?:/subscriptions/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,48}[A-Za-z0-9])?)?")
 
 # Each queue CreMore may consume, and the field holding its address. A queue is
 # the customer's own and only read: a message is acknowledged after its work is durable.
-QUEUES = {"sqs": "queue_url", "pubsub": "subscription", "servicebus": "queue"}
+QUEUES = {"sqs": "queue_url"}
 FIELDS = ("schedules_enabled", "full_scan_default_minutes", "full_scan_start_minute",
           *(f"{kind}_{name}" for kind, address in QUEUES.items()
             for name in ("enabled", "profile_id", address, "dedicated_acknowledged")),
@@ -66,15 +61,14 @@ FULL_SCAN_DEFAULT = 1440
 FULL_SCAN_START = 1020
 # Providers whose repositories, spaces or pages a change feed polls (cremore.scanning.changes), and the minutes
 # between looks when an Admin set none: Bitbucket's hourly API allowance is the smallest, so it is read less often.
-CHANGE_FEED_PROVIDERS = ("github", "gitlab", "azure_devops", "bitbucket", "confluence", "notion")
-FEED_DEFAULT_MINUTES = {"bitbucket": 15}  # every other provider: 5
+CHANGE_FEED_PROVIDERS = ("github", "notion")
+FEED_DEFAULT_MINUTES = {}
 # Which configuration value pins each field. A trigger's own ALLOW/lock is a
 # separate property (``*_allowed``) because it overrides rather than pins.
 PINS = {"sqs_profile_id": "scan_sqs_profile_id",
         "sqs_queue_url": "scan_sqs_queue_url",
         "sqs_dedicated_acknowledged": "scan_sqs_dedicated_acknowledged"}
 ALLOWED_BY = {"schedules": "scan_schedules_allowed", "sqs": "scan_sqs_allowed",
-              "pubsub": "scan_pubsub_allowed", "servicebus": "scan_servicebus_allowed",
               "change_feeds": "scan_change_feeds_allowed"}
 
 
@@ -110,35 +104,7 @@ def queue_url(value) -> str:
     return str(value)
 
 
-def subscription(value) -> str:
-    """A Pub/Sub subscription path, ``projects/{project}/subscriptions/{name}``."""
-    if not value:
-        return ""
-    if not isinstance(value, str) or not _SUBSCRIPTION.fullmatch(value):
-        raise TriggerSettingError("TRIGGER_SUBSCRIPTION_INVALID")
-    return value
-
-
-def bus_queue(value) -> str:
-    """A Service Bus queue or topic subscription URL on the Azure public cloud:
-    ``https://{namespace}.servicebus.windows.net/{queue}`` or ``.../{topic}/subscriptions/{name}``."""
-    # ponytail: public cloud only; add the sovereign-cloud suffixes when a customer runs there.
-    if not value:
-        return ""
-    try:
-        parsed = urlsplit(str(value))
-        port = parsed.port
-    except ValueError:
-        raise TriggerSettingError("TRIGGER_BUS_QUEUE_INVALID") from None
-    if (parsed.scheme != "https" or parsed.username or parsed.password or parsed.query
-            or parsed.fragment or port not in (None, 443)
-            or not _BUS_NAMESPACE.fullmatch(parsed.hostname or "")
-            or not _BUS_ENTITY.fullmatch(parsed.path)):
-        raise TriggerSettingError("TRIGGER_BUS_QUEUE_INVALID")
-    return str(value)
-
-
-_ADDRESSES = {"sqs_queue_url": queue_url, "pubsub_subscription": subscription, "servicebus_queue": bus_queue}
+_ADDRESSES = {"sqs_queue_url": queue_url}
 
 
 def feed_minutes(value) -> dict:

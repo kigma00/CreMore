@@ -1,4 +1,4 @@
-export const metadataProviders = ["gitlab", "gcp", "github", "atlassian", "bitbucket", "slack", "azure_key_vault", "azure_entra", "azure_resource_manager", "notion", "azure_devops"] as const;
+export const metadataProviders = ["github", "github_identity", "notion", "slack"] as const;
 export const metadataKinds = ["credential", "principal", "installation", "policy", "request", "context", "public_key", "trust", "vault_item", "vault_version", "runner", "resource", "unknown"] as const;
 export type MetadataFact = { name: string; state: string; value?: string | number | boolean | (string | number | boolean)[] | null; container?: string | null; children: MetadataFact[]; reason?: string | null };
 export type MetadataPage<T> = { items: T[]; total: number; offset: number; limit: number; next_offset?: number | null };

@@ -68,13 +68,6 @@ def register_tables(metadata):
 
 # A run must finish within this long of its start: later batches and the finish are refused.
 RUN_LIFETIME = timedelta(hours=6)
-# Vault/OpenBao token-accessor and lease listing is management evidence, never KV storage
-# (vault/README.md). These reasons stay on the run but never make its KV listing partial.
-VAULT_MANAGEMENT_REASONS = frozenset({"BATCH_TOKEN_INVENTORY_UNSUPPORTED", "DUPLICATE_TOKEN_ACCESSOR",
-                                      "TOKEN_ACCESSOR_LIST_FAILED", "TOKEN_ACCESSOR_LOOKUP_FAILED",
-                                      "DUPLICATE_LEASE_IDENTIFIER", "LEASE_LIST_FAILED", "LEASE_LOOKUP_FAILED"})
-
-
 def utc(value):
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
@@ -392,38 +385,16 @@ class CoverageStore:
             else:
                 if any(item["evidence"] == "UNRESOLVED" for item in items):
                     reasons = sorted(set(reasons) | {"UNRESOLVED_ITEMS"})
-                # A MANAGED row keeps its own lookup status and reason; it is not KV coverage.
-                if owner["spec"].get("include_token_accessors"):
-                    reasons = sorted(set(reasons) | {"BATCH_TOKEN_INVENTORY_UNSUPPORTED"})
                 operation_items = [item for item in items if item["evidence"] == "OPERATION"]
                 operations = [item["operation"] for item in operation_items]
                 if len({(item["operation"]["name"], item["reference"], item["region"]) for item in operation_items}) != len(operations):
                     raise CoverageError("DUPLICATE_OPERATION_REPORT")
                 if any(op["status"] in ("PARTIAL", "FAILED") for op in operations):
                     reasons = sorted(set(reasons) | {"SOURCE_COLLECTION_INCOMPLETE"})
-            external = version == 1 and owner["spec"].get("provider") == "external_vault"
-            declared = getattr(outcome, "completeness", None)
-            if external:
-                # A generic export cannot show CreMore that it held everything;
-                # only the declared basis can, and it must fit how it was read.
-                expected = "READER_REPORTED" if owner["spec"].get("reader") else "OPERATOR_DECLARED"
-                if declared not in (None, expected):
-                    raise CoverageError("COMPLETENESS_BASIS_MISMATCH")
-                if outcome.status == "COMPLETE" and declared is None:
-                    reasons = sorted(set(reasons) | {"COMPLETENESS_NOT_DECLARED"})
-            elif declared is not None:
-                raise CoverageError("COMPLETENESS_BASIS_MISMATCH")
-            management = version == 1 and owner["spec"].get("provider") in ("vault", "openbao")
-            kv_reasons = [r for r in reasons if r not in VAULT_MANAGEMENT_REASONS] if management else reasons
-            # A collector reports any reason as incomplete; only KV reasons decide a Vault run's status. Only
-            # the collector's own management reasons can explain its non-COMPLETE outcome, never ones added here.
-            reported = ("COMPLETE" if management and outcome.status != "COMPLETE" and outcome.reasons
-                        and set(outcome.reasons) <= VAULT_MANAGEMENT_REASONS and not kv_reasons else outcome.status)
-            status = "PARTIAL" if reported == "COMPLETE" and kv_reasons else reported
-            # A run over the secrets an operator named (references: AWS and GCP Secret Manager) reads no list: what is
-            # whole is the operator's list, not the API's (owner decision 2026-10-08).
+            status = "PARTIAL" if outcome.status == "COMPLETE" and reasons else outcome.status
+            # An explicit AWS secret list is complete only for the operator's named references.
             named = version == 1 and bool(owner["spec"].get("references"))
-            completeness = ((declared if external else "OPERATOR_DECLARED" if named else "API_LISTING")
+            completeness = (("OPERATOR_DECLARED" if named else "API_LISTING")
                             if status == "COMPLETE" else None)
             if run["status"] != "RUNNING":
                 if ((run["status"], run["reasons"], run["item_count"], run.get("completeness"))

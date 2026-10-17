@@ -115,7 +115,7 @@ def validate_spec(spec):
         raise ValueError("GITHUB_INVENTORY_CAPABILITY_REQUIRED")
     if set(spec.capabilities) - {"inventory", "audit", "relations", "policy", "public_keys", "vault_metadata", "issuer_digest"}:
         raise ValueError("GITHUB_CAPABILITY_NOT_SUPPORTED")
-    if spec.options.mode not in {"organization", "enterprise"} or spec.options.include_values:
+    if spec.options.mode not in {"organization", "enterprise"}:
         raise ValueError("GITHUB_INVALID_COLLECTION_MODE")
     if not spec.options.github_inventory and (not spec.options.include_audit_events
             or spec.options.sources or spec.options.include_actions or "vault_metadata" in spec.capabilities):

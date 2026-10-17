@@ -1,13 +1,10 @@
 """The installation's machine identity from the organization's IdP, set in the dashboard.
 
-An administrator registers one client-credentials app of the IdP (Okta, Keycloak, Entra ID and others) and
-says which clouds trust it: AWS through an IAM role that trusts the IdP (``AssumeRoleWithWebIdentity``), GCP
-through a workload identity pool provider, Azure through an app registration's federated credential, and
-Vault or OpenBao clusters through JWT login. Every API and worker process then keeps those tokens current
+An administrator registers one client-credentials app of the IdP and configures
+an AWS IAM role that trusts it (``AssumeRoleWithWebIdentity``). API and worker processes keep its token current
 itself, in files only it reads, and points the cloud SDKs at them the way the deployment files did
 (docs/MACHINE_IDENTITY.md). No refresher runs beside it and nothing is typed into the deployment; the
-connections keep their own sign-in methods (an AWS member role, GCP ADC, an Azure workload identity), which
-now reach the clouds as this identity.
+AWS connections keep their own sign-in methods and reach AWS as this identity.
 
 The client secret is sealed like a connection credential and never returned. A process reports back its
 state and the non-secret claims of the tokens it holds (issuer, subject, audience, lifetime); the setup steps
@@ -41,29 +38,17 @@ STATUS_PREFIX = "machine_identity.status."
 # The last "fetch a token now" an Admin ran from the API, kept apart from the processes' own reports.
 TEST_KEY = "machine_identity.test"
 ACTOR = "system:machine-identity"
-CLOUDS = ("aws", "gcp", "azure")
+CLOUDS = ("aws",)
 AUTH_METHODS = ("client_secret_post", "client_secret_basic")
 TOKEN_FIELDS = ("access_token", "id_token")
-# The audience Microsoft recommends for a federated identity credential.
-AZURE_AUDIENCE = "api://AzureADTokenExchange"
 AUDIT_TARGET = uuid.uuid5(uuid.NAMESPACE_URL, "cremore:machine-identity")
-MAX_VAULT_TOKENS = 16
 
 _ROLE_ARN = re.compile(r"arn:aws(?:-[a-z]+)*:iam::\d{12}:role/[\w+=,.@/-]{1,512}\Z")
-_GCP_PROVIDER = re.compile(r"//iam\.googleapis\.com/projects/\d{1,20}/locations/global/workloadIdentityPools/"
-                           r"[a-z0-9-]{4,32}/providers/[a-z0-9-]{4,32}\Z")
-_GCP_ACCOUNT = re.compile(r"[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63})*\.iam\.gserviceaccount\.com\Z")
-_GUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
-_NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}\Z")
-
-# Every variable a binding may set or clear; the process's own values come back when it is turned off.
-_AWS_KEYS = ("AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_SESSION_NAME", "AWS_PROFILE", "AWS_ACCESS_KEY_ID",
+# AWS SDK 환경을 기존 값으로 되돌리기 위해 관리할 변수 목록.
+ENV_KEYS = ("AWS_ROLE_ARN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_SESSION_NAME", "AWS_PROFILE", "AWS_ACCESS_KEY_ID",
              "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE",
              "AWS_EC2_METADATA_DISABLED", "AWS_ROLES_ANYWHERE_CONFIG")
-_GCP_KEYS = ("GOOGLE_APPLICATION_CREDENTIALS",)
-_AZURE_KEYS = ("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_FEDERATED_TOKEN_FILE", "AZURE_CLIENT_SECRET",
-               "AZURE_CLIENT_CERTIFICATE_PATH", "AZURE_USERNAME", "AZURE_PASSWORD")
-ENV_KEYS = _AWS_KEYS + _GCP_KEYS + _AZURE_KEYS
+
 
 
 class MachineIdentityError(ValueError):
@@ -127,30 +112,12 @@ def validate(body: dict, current: dict | None) -> dict:
         return {"enabled": raw.get("enabled") is True, "scope": _optional(raw.get("scope"), "MACHINE_IDENTITY_SCOPE_INVALID"),
                 "audience": _optional(raw.get("audience"), "MACHINE_IDENTITY_AUDIENCE_INVALID"), "raw": raw}
 
-    aws, gcp, azure = binding("aws"), binding("gcp"), binding("azure")
+    if any(body.get(name) for name in ("gcp", "azure", "vault")):
+        raise MachineIdentityError("MACHINE_IDENTITY_UNSUPPORTED_PROVIDER")
+    aws = binding("aws")
     out = {"idp": idp}
     out["aws"] = {"enabled": aws["enabled"], "scope": aws["scope"], "audience": aws["audience"],
                   "role_arn": _text(aws["raw"].get("role_arn"), "MACHINE_IDENTITY_AWS_ROLE_ARN_INVALID", _ROLE_ARN, required=aws["enabled"])}
-    out["gcp"] = {"enabled": gcp["enabled"], "scope": gcp["scope"], "audience": gcp["audience"],
-                  "provider": _text(gcp["raw"].get("provider"), "MACHINE_IDENTITY_GCP_PROVIDER_INVALID", _GCP_PROVIDER, required=gcp["enabled"]),
-                  "service_account": _text(gcp["raw"].get("service_account"), "MACHINE_IDENTITY_GCP_ACCOUNT_INVALID", _GCP_ACCOUNT, required=False)}
-    out["azure"] = {"enabled": azure["enabled"], "scope": azure["scope"], "audience": azure["audience"] or AZURE_AUDIENCE,
-                    "tenant": _text(azure["raw"].get("tenant"), "MACHINE_IDENTITY_AZURE_TENANT_INVALID", _GUID, required=azure["enabled"]).lower(),
-                    "client_id": _text(azure["raw"].get("client_id"), "MACHINE_IDENTITY_AZURE_CLIENT_INVALID", _GUID, required=azure["enabled"]).lower()}
-    vault_in = body.get("vault") or []
-    if not isinstance(vault_in, list) or len(vault_in) > MAX_VAULT_TOKENS:
-        raise MachineIdentityError("MACHINE_IDENTITY_VAULT_INVALID")
-    vault, names = [], set()
-    for item in vault_in:
-        if not isinstance(item, dict):
-            raise MachineIdentityError("MACHINE_IDENTITY_VAULT_INVALID")
-        name = _text(item.get("name"), "MACHINE_IDENTITY_VAULT_NAME_INVALID", _NAME)
-        if name in names:
-            raise MachineIdentityError("MACHINE_IDENTITY_VAULT_NAME_REPEATED")
-        names.add(name)
-        vault.append({"name": name, "scope": _optional(item.get("scope"), "MACHINE_IDENTITY_SCOPE_INVALID"),
-                      "audience": _optional(item.get("audience"), "MACHINE_IDENTITY_AUDIENCE_INVALID")})
-    out["vault"] = vault
     out["secret"] = (current or {}).get("secret")
     return out
 
@@ -161,7 +128,7 @@ def revision_of(row: dict | None) -> int:
 
 
 def in_use(record: dict | None) -> bool:
-    return bool(record) and (any(record.get(cloud, {}).get("enabled") for cloud in CLOUDS) or bool(record.get("vault")))
+    return bool(record) and bool(record.get("aws", {}).get("enabled"))
 
 
 def machine_binding(record: dict) -> dict:
@@ -208,7 +175,7 @@ def save(repo, settings, body: dict, actor: str) -> dict:
     if in_use(record) and not record.get("secret"):
         raise MachineIdentityError("MACHINE_IDENTITY_SECRET_REQUIRED")
     saved = repo.put_revisioned_setting(KEY, record, actor)
-    clouds = [cloud for cloud in CLOUDS if record[cloud]["enabled"]] + [f"vault:{item['name']}" for item in record["vault"]]
+    clouds = [cloud for cloud in CLOUDS if record[cloud]["enabled"]]
     repo.record_finding_event(FindingEvent(target_type="machine_identity", target_id=AUDIT_TARGET, actor=actor,
                                            event_type="MACHINE_IDENTITY_CHANGED",
                                            note=f"{record['idp']['client_id']} -> {', '.join(clouds) or 'none'}"
@@ -219,11 +186,10 @@ def save(repo, settings, body: dict, actor: str) -> dict:
 def public(row: dict | None) -> dict:
     """The setting as the dashboard reads it: which secret exists, never the secret."""
     if not row:
-        return {"configured": False, "revision": 0, "idp": None, "aws": None, "gcp": None, "azure": None, "vault": [],
+        return {"configured": False, "revision": 0, "idp": None, "aws": None,
                 "secret_saved": False}
     value = row["value"]
     return {"configured": True, "revision": revision_of(row), "idp": value.get("idp"), "aws": value.get("aws"),
-            "gcp": value.get("gcp"), "azure": value.get("azure"), "vault": value.get("vault") or [],
             "secret_saved": bool(value.get("secret")), "updated_by": row.get("updated_by"),
             "updated_at": row["updated_at"].isoformat() if isinstance(row.get("updated_at"), _dt.datetime) else row.get("updated_at")}
 
@@ -255,22 +221,6 @@ def claims(token: str) -> dict:
     return out
 
 
-def gcp_config(binding: dict, token_path: Path, token_field: str) -> dict:
-    """The external-account configuration ``gcloud ... create-cred-config`` would write for this token file."""
-    config = {
-        "type": "external_account",
-        "audience": binding["provider"],
-        "subject_token_type": "urn:ietf:params:oauth:token-type:" + ("id_token" if token_field == "id_token" else "jwt"),
-        "token_url": "https://sts.googleapis.com/v1/token",
-        "credential_source": {"file": str(token_path)},
-    }
-    if binding.get("service_account"):
-        config["service_account_impersonation_url"] = (
-            "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/"
-            f"{binding['service_account']}:generateAccessToken")
-    return config
-
-
 def environment(record: dict, directory: Path) -> dict[str, str | None]:
     """What each enabled cloud's SDK is pointed at (None clears a variable that would win over it)."""
     env: dict[str, str | None] = {}
@@ -280,12 +230,6 @@ def environment(record: dict, directory: Path) -> dict[str, str | None]:
                     "AWS_SECRET_ACCESS_KEY": None, "AWS_SESSION_TOKEN": None, "AWS_CONFIG_FILE": os.devnull,
                     "AWS_SHARED_CREDENTIALS_FILE": os.devnull, "AWS_EC2_METADATA_DISABLED": "true",
                     "AWS_ROLES_ANYWHERE_CONFIG": None})
-    if record.get("gcp", {}).get("enabled"):
-        env["GOOGLE_APPLICATION_CREDENTIALS"] = str(directory / "gcp.json")
-    if record.get("azure", {}).get("enabled"):
-        env.update({"AZURE_CLIENT_ID": record["azure"]["client_id"], "AZURE_TENANT_ID": record["azure"]["tenant"],
-                    "AZURE_FEDERATED_TOKEN_FILE": str(directory / "azure"), "AZURE_CLIENT_SECRET": None,
-                    "AZURE_CLIENT_CERTIFICATE_PATH": None, "AZURE_USERNAME": None, "AZURE_PASSWORD": None})
     return env
 
 
@@ -311,8 +255,6 @@ class Keeper:
         self.config: dict | None = None
         self.error: str | None = None
         self.reset_pending = False
-        self.vault_directory = str(self.directory / "vault")
-        self.blocked_vault_directory = str(self.directory / ("unavailable-" + uuid.uuid4().hex))
 
     def _secret(self, record: dict):
         from cremore.secretstore.sealed import unseal
@@ -340,11 +282,6 @@ class Keeper:
                     self.tokens.append(Token(cloud, _grant(idp, secret, scope=binding.get("scope"), audience=binding.get("audience")),
                                              self.directory))
                     self.targets[cloud] = cloud
-            for item in record.get("vault") or []:
-                name = "idp-" + item["name"]
-                self.tokens.append(Token(name, _grant(idp, secret, scope=item.get("scope"), audience=item.get("audience")),
-                                         self.directory / "vault"))
-                self.targets[name] = f"vault:{item['name']}"
         except ValueError:
             self.tokens, self.targets, self.error = [], {}, "MACHINE_IDENTITY_INVALID"
 
@@ -356,7 +293,7 @@ class Keeper:
         # collect from a different tenant after a restart or IdP outage.
         wanted = environment(record, self.directory)
         if blocked:
-            for key in ("AWS_WEB_IDENTITY_TOKEN_FILE", "GOOGLE_APPLICATION_CREDENTIALS", "AZURE_FEDERATED_TOKEN_FILE"):
+            for key in ("AWS_WEB_IDENTITY_TOKEN_FILE",):
                 if key in wanted:
                     wanted[key] = os.devnull
         for key in ENV_KEYS:
@@ -372,9 +309,6 @@ class Keeper:
                 else:
                     self.environ[key] = self.original[key]
         self.applied = set(wanted)
-        if getattr(self.settings, "vault_connection_token_dir", "") in (self.vault_directory, self.blocked_vault_directory):
-            self.settings.vault_connection_token_dir = self.blocked_vault_directory if blocked else self.vault_directory
-
     def _status(self, now: float) -> dict:
         out = {}
         for token in self.tokens:
@@ -420,10 +354,6 @@ class Keeper:
             try:
                 for token in self.tokens:
                     write_token(token.directory or self.directory, token.name, "")
-                record = self.config or {}
-                if record.get("gcp", {}).get("enabled"):
-                    config = gcp_config(record["gcp"], self.directory / "gcp", record["idp"].get("token_field", "access_token"))
-                    write_token(self.directory, "gcp.json", json.dumps(config, indent=2))
             except OSError:
                 self.error = "TOKEN_WRITE_FAILED"
                 self._report(now)
@@ -457,7 +387,6 @@ class Keeper:
         secret = self._secret(record)
         idp = record["idp"]
         wanted = [(cloud, record[cloud]) for cloud in CLOUDS if record[cloud].get("enabled")]
-        wanted += [(f"vault:{item['name']}", item) for item in record.get("vault") or []]
         out = {}
         owned = self.client is None
         client = self.client or httpx.Client(timeout=15.0, follow_redirects=False, trust_env=False)
@@ -491,10 +420,6 @@ def start_keeper(repo, settings, process: str) -> threading.Thread:  # pragma: n
             process.split(":", 1)[0] not in {"worker", "collector"} or settings.worker_execution_role != "collector"):
         raise MachineIdentityError("MACHINE_IDENTITY_COLLECTOR_ONLY")
     keeper = Keeper(repo, settings, process)
-    # A Vault connection's JWT login reads its token where the deployment says; without one, where this
-    # process keeps the IdP tokens it names "idp-<name>".
-    if not getattr(settings, "vault_connection_token_dir", ""):
-        settings.vault_connection_token_dir = str(keeper.directory / "vault")
     try:
         keeper.tick()  # the SDKs see the identity before the first request or job
     except Exception as exc:  # noqa: BLE001 -- the loop tries again
@@ -534,29 +459,4 @@ def setup_steps(record: dict | None, observed: dict, partition_policy: dict | No
         lines.append(f"aws iam put-role-policy --role-name {name} --policy-name CreMoreScanner "
                      f"--policy-document '{json.dumps(policy)}'")
         out["aws"] = "\n".join(lines)
-    if record.get("gcp", {}).get("enabled"):
-        iss, aud, sub = claim("gcp", "iss", "<issuer>"), claim("gcp", "aud", "<audience>"), claim("gcp", "sub", "<subject>")
-        provider = record["gcp"]["provider"]
-        project, pool, prov = provider.split("/")[4], provider.split("/")[8], provider.split("/")[10]
-        member = f"principal://iam.googleapis.com/projects/{project}/locations/global/workloadIdentityPools/{pool}/subject/{sub}"
-        lines = [f"gcloud iam workload-identity-pools create {pool} --location=global",
-                 (f"gcloud iam workload-identity-pools providers create-oidc {prov} --location=global "
-                  f"--workload-identity-pool={pool} --issuer-uri={iss} --allowed-audiences={aud} "
-                  f"--attribute-mapping=google.subject=assertion.sub --attribute-condition=\"assertion.sub=='{sub}'\"")]
-        if record["gcp"].get("service_account"):
-            lines.append(f"gcloud iam service-accounts add-iam-policy-binding {record['gcp']['service_account']} "
-                         f"--role=roles/iam.workloadIdentityUser --member={member}")
-        else:
-            lines.append(f"# {member}")
-        out["gcp"] = "\n".join(lines)
-    if record.get("azure", {}).get("enabled"):
-        iss, sub = claim("azure", "iss", "<issuer>"), claim("azure", "sub", "<subject>")
-        credential = {"name": "cremore-idp", "issuer": iss, "subject": sub, "audiences": [record["azure"]["audience"]]}
-        out["azure"] = f"az ad app federated-credential create --id {record['azure']['client_id']} --parameters '{json.dumps(credential)}'"
-    for item in record.get("vault") or []:
-        name = f"vault:{item['name']}"
-        iss, aud, sub = claim(name, "iss", "<issuer>"), claim(name, "aud", "<audience>"), claim(name, "sub", "<subject>")
-        out[name] = "\n".join([f"vault write auth/jwt/config oidc_discovery_url={iss}",
-                               (f"vault write auth/jwt/role/cremore role_type=jwt bound_audiences={aud} bound_subject={sub} "
-                                "user_claim=sub token_policies=cremore-read token_ttl=15m")])
     return out

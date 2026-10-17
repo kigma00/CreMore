@@ -72,7 +72,6 @@ def hash_value(engine, value: bytes, location: dict, *, max_bytes: int) -> list[
         result.append(Observation(**location, evidence="VALUE", credential_type=detected.credential_type,
                                   fingerprint=detected.fingerprint, identifier=identifier,
                                   provider_digest=(detected.extra_safe_data.get("issuer_comparison") or {}).get("github_token_digest"),
-                                  issuer_identifier=_issuer_identifier(detected),
                                   session_fingerprint=session_fingerprint))
     paired_ids = {item.identifier for item in result if item.credential_type == "AWS_ACCESS_KEY"}
     result.extend(Observation(**location, evidence="IDENTIFIER", credential_type="AWS_ACCESS_KEY", identifier=key)
@@ -109,8 +108,3 @@ def hash_value(engine, value: bytes, location: dict, *, max_bytes: int) -> list[
                     result.append(Observation(**location, evidence="VALUE", credential_type="OPAQUE_VALUE", fingerprint=candidate))
                     known.add(candidate)
     return result
-
-
-def _issuer_identifier(detected):
-    identifiers = (detected.extra_safe_data.get("issuer_comparison") or {}).get("gcp_service_account_keys", [])
-    return identifiers[0] if len(identifiers) == 1 else ""

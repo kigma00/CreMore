@@ -7,8 +7,7 @@
 #     -f deploy/compose/identity/aws-web-identity.yml up -d
 #
 # The configuration file (IDENTITY_REFRESHER_CONFIG) names each token and where it
-# goes: cloud tokens under /run/cremore-identity/cloud, a Vault connection's
-# login token under /run/cremore-identity/vault. Secrets are environment names.
+# goes: AWS tokens under /run/cremore-identity/cloud. Secrets are environment names.
 services:
   identity-refresher:
     image: cremore-python
@@ -39,9 +38,6 @@ services:
     volumes:
       - cremore-identity:/run/cremore-identity:ro
   worker:
-    environment:
-      # A Vault connection's server_auth names a file here, never a path.
-      VAULT_CONNECTION_TOKEN_DIR: /run/cremore-identity/vault
     volumes:
       - cremore-identity:/run/cremore-identity:ro
 

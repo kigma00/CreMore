@@ -8,13 +8,10 @@
 {{- $cloud := or (not $isolated) (has $name (list "worker" "remediator")) -}}
 {{- if and $isolated (eq $name "remediator") }}
 {{- $_ := set $root.Values "aws" $root.Values.isolation.remediatorIdentity.aws }}
-{{- $_ := set $root.Values "gcp" $root.Values.isolation.remediatorIdentity.gcp }}
-{{- $_ := set $root.Values "azure" $root.Values.isolation.remediatorIdentity.azure }}
 {{- end }}
 {{- if not $cloud }}
 {{- $_ := set $root.Values.aws.webIdentity "enabled" false }}
 {{- $_ := set $root.Values.aws.rolesAnywhere "enabled" false }}
-{{- $_ := set $root.Values.azure.workloadIdentity "enabled" false }}
 {{- end }}
 {{- /* The worker resolves every connection's vault:// reference. The API needs
        the store only to read the master that seals a credential an operator
@@ -24,8 +21,6 @@
 {{- $needsStore := and $root.Values.secretStore.enabled (or (eq $name "worker") (and (not $isolated) (eq $name "api") $sealingFromVault)) }}
 {{- $storeRole := $root.Values.secretStore.kubernetes.role }}
 {{- $storeTokenKey := $root.Values.secretStore.tokenKey }}
-{{- $azureIdentity := $root.Values.azure.workloadIdentity.enabled }}
-{{- $vaultConnections := and (eq $name "worker") $root.Values.vaultConnections.tokens }}
 {{- if eq $name "api" }}
 {{- with $root.Values.secretStore.kubernetes.sealingRole }}{{ $storeRole = . }}{{ end }}
 {{- with $root.Values.secretStore.sealingTokenKey }}{{ $storeTokenKey = . }}{{ end }}
@@ -46,14 +41,6 @@ spec:
   template:
     metadata:
       labels: {{ include "cremore.selectorLabels" (dict "root" $root "component" $name) | nindent 8 }}
-        {{- if and $azureIdentity (ne $name "web") }}
-        {{- /* Only labelled pods get the webhook's token volume and AZURE_* variables. */}}
-        azure.workload.identity/use: "true"
-        {{- end }}
-      {{- if and $azureIdentity (ne $name "web") }}
-      annotations:
-        azure.workload.identity/service-account-token-expiration: {{ $root.Values.azure.workloadIdentity.tokenExpirationSeconds | quote }}
-      {{- end }}
     spec:
       serviceAccountName: {{ include "cremore.serviceAccountName" (dict "root" $root "component" $name) }}
       automountServiceAccountToken: {{ index (index $root.Values.serviceAccounts $name) "automountServiceAccountToken" }}
@@ -180,8 +167,6 @@ spec:
             - { name: LEARNED_FP_MODE, value: {{ $root.Values.config.learnedFalsePositivesMode | quote }} }
             - { name: SCAN_SCHEDULES_MODE, value: {{ $root.Values.scanning.schedulesMode | quote }} }
             - { name: SCAN_SQS_MODE, value: {{ $root.Values.scanning.sqs.mode | quote }} }
-            - { name: SCAN_PUBSUB_MODE, value: {{ $root.Values.scanning.pubsub.mode | quote }} }
-            - { name: SCAN_SERVICEBUS_MODE, value: {{ $root.Values.scanning.serviceBus.mode | quote }} }
             - { name: SCAN_CHANGE_FEEDS_MODE, value: {{ $root.Values.scanning.changeFeedsMode | quote }} }
             - { name: SCAN_SQS_QUEUE_URL, value: {{ $root.Values.scanning.sqs.queueURL | quote }} }
             - { name: SCAN_SQS_PROFILE_ID, value: {{ $root.Values.scanning.sqs.profileId | quote }} }
@@ -192,19 +177,6 @@ spec:
                    secrets and checks the plan again with these switches (docs/PROVIDER_ACTIONS.md). */}}
             - { name: ACTION_EXECUTION_ENABLED, value: {{ and (or (not $isolated) (eq $name "remediator")) $root.Values.config.actionExecutionEnabled | quote }} }
             - { name: ACTION_DELETION_ENABLED, value: {{ and (or (not $isolated) (eq $name "remediator")) $root.Values.config.actionDeletionEnabled | quote }} }
-            {{- if and $cloud $root.Values.gcp.adcSecretName }}
-            - { name: GOOGLE_APPLICATION_CREDENTIALS, value: /run/gcp/adc.json }
-            {{- end }}
-            {{- if $root.Values.gcp.quotaProject }}
-            - { name: GOOGLE_CLOUD_QUOTA_PROJECT, value: {{ $root.Values.gcp.quotaProject | quote }} }
-            {{- end }}
-            {{- end }}
-            {{- if and (eq $name "api") $root.Values.gcp.oauth.secretName }}
-            - name: GCP_OAUTH_CLIENT_ID
-              valueFrom: { secretKeyRef: { name: {{ $root.Values.gcp.oauth.secretName | quote }}, key: {{ $root.Values.gcp.oauth.clientIdKey | quote }} } }
-            - name: GCP_OAUTH_CLIENT_SECRET
-              valueFrom: { secretKeyRef: { name: {{ $root.Values.gcp.oauth.secretName | quote }}, key: {{ $root.Values.gcp.oauth.clientSecretKey | quote }} } }
-            - { name: GCP_OAUTH_REDIRECT_URI, value: {{ $root.Values.gcp.oauth.redirectUri | quote }} }
             {{- end }}
             {{- if $needsStore }}
             - name: SECRET_STORE_URL
@@ -261,9 +233,6 @@ spec:
             {{- /* Task-runner processes of the scanning worker; remediator and control keep one loop. */}}
             - { name: WORKER_CONCURRENCY, value: {{ $root.Values.config.workerConcurrency | quote }} }
             {{- end }}
-            {{- if $vaultConnections }}
-            - { name: VAULT_CONNECTION_TOKEN_DIR, value: "/run/cremore-vault-connections" }
-            {{- end }}
             {{- end }}
             {{- end }}
           volumeMounts:
@@ -280,9 +249,6 @@ spec:
             {{- else if and (ne $name "web") $root.Values.aws.webIdentity.enabled }}
             - { name: aws-web-identity, mountPath: /run/cremore-aws-identity, readOnly: true }
             {{- end }}
-            {{- if and $isWorker $cloud $root.Values.gcp.adcSecretName }}
-            - { name: gcp-adc, mountPath: /run/gcp, readOnly: true }
-            {{- end }}
             {{- if and (ne $name "web") $root.Values.databaseTLS.caSecretName }}
             - { name: database-ca, mountPath: /run/db-ca, readOnly: true }
             {{- end }}
@@ -294,9 +260,6 @@ spec:
             {{- end }}
             {{- if and $needsStore (eq $root.Values.secretStore.authMode "kubernetes") }}
             - { name: vault-workload-token, mountPath: /run/cremore-vault, readOnly: true }
-            {{- end }}
-            {{- if $vaultConnections }}
-            - { name: vault-connection-tokens, mountPath: /run/cremore-vault-connections, readOnly: true }
             {{- end }}
           {{- if $isWorker }}
           {{- /* The worker has no HTTP port: liveness is the freshness of its heartbeat file. */}}
@@ -424,14 +387,6 @@ spec:
                   expirationSeconds: {{ $root.Values.aws.webIdentity.expirationSeconds }}
                   path: token
         {{- end }}
-        {{- if and $isWorker $cloud $root.Values.gcp.adcSecretName }}
-        - name: gcp-adc
-          secret:
-            secretName: {{ $root.Values.gcp.adcSecretName | quote }}
-            defaultMode: 0440
-            items:
-              - { key: {{ $root.Values.gcp.adcSecretKey | quote }}, path: adc.json }
-        {{- end }}
         {{- if and (ne $name "web") $root.Values.databaseTLS.caSecretName }}
         - name: database-ca
           secret:
@@ -473,19 +428,5 @@ spec:
                   path: token
                   audience: {{ $root.Values.secretStore.kubernetes.audience | quote }}
                   expirationSeconds: {{ $root.Values.secretStore.kubernetes.tokenExpirationSeconds }}
-        {{- end }}
-        {{- if $vaultConnections }}
-        {{- /* One audience-bound token per external Vault cluster; never the
-               installation's own secret-store token, which lives elsewhere. */}}
-        - name: vault-connection-tokens
-          projected:
-            defaultMode: 0440
-            sources:
-              {{- range $token := $root.Values.vaultConnections.tokens }}
-              - serviceAccountToken:
-                  path: {{ $token.name }}
-                  audience: {{ $token.audience | quote }}
-                  expirationSeconds: {{ $root.Values.vaultConnections.expirationSeconds }}
-              {{- end }}
         {{- end }}
 {{- end }}

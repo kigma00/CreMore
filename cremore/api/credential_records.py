@@ -8,7 +8,7 @@ provider or reads a secret:
 * the issued-credential inventories: schema 2 metadata collections and the AWS IAM
   schema 1 collections. An issued credential joins the finding of the same credential
   by the evidence the vault comparison uses (keyed value fingerprint, GitHub token
-  digest, GCP key ID, AWS key ID); one nobody found exposed is its own row;
+  digest, AWS key ID); one nobody found exposed is its own row;
 * the vault comparison state of each (``cremore.coverage.correlation.report``);
 * what analysts added (tags, review stage, remediation steps, owner contact).
 
@@ -48,11 +48,10 @@ _STORED = {"MATCHED"}
 _NAMED = {"IDENTIFIER_ONLY", "PUBLIC_CERTIFICATE_MATCH"}
 _ABSENT = {"NO_VAULT_MATCH", "IDENTIFIER_NOT_OBSERVED", "PUBLIC_CERTIFICATE_NOT_OBSERVED"}
 # The dashboard names an issuer by its product.
-_ISSUER = {"azure_entra": "azure", "azure_resource_manager": "azure", "azure_key_vault": "azure"}
+_ISSUER = {}
 _VISIBILITY = {"public": "public", "internal": "internal", "private": "private", "org": "org",
                "organization": "org", "workspace": "org"}
-_TYPE_BY_PREFIX = (("serviceAccountKey:", "GCP_SERVICE_ACCOUNT"), ("apiKey:", "GCP_API_KEY"),
-                   ("fgpat:", "GITHUB_FINE_GRAINED_PAT"), ("sso:", "GITHUB_SSO_AUTHORIZED_CREDENTIAL"),
+_TYPE_BY_PREFIX = (("fgpat:", "GITHUB_FINE_GRAINED_PAT"), ("sso:", "GITHUB_SSO_AUTHORIZED_CREDENTIAL"),
                    ("deployKey:", "GITHUB_DEPLOY_KEY"))
 # The credential_type values GitHub's credential-authorizations list gives (REST "List SAML SSO authorizations").
 _GITHUB_SSO_TYPES = {"personal access token": "GITHUB_CLASSIC_PAT", "SSH key": "GITHUB_SSH_KEY",
@@ -216,7 +215,7 @@ class _Index:
 
     def __init__(self, contract, key_id):
         self.contract, self.key_id = contract, key_id
-        self.value, self.digest, self.gcp, self.aws = {}, {}, {}, {}
+        self.value, self.digest, self.aws = {}, {}, {}
 
     def add(self, cred, exposures, record):
         if cred.fingerprint:
@@ -231,9 +230,6 @@ class _Index:
                 continue
             if private.get("github_token_digest"):
                 self.digest.setdefault(private["github_token_digest"], record)
-            keys = private.get("gcp_service_account_keys") or []
-            if len(keys) == 1:  # a file naming several key IDs names none of them for sure
-                self.gcp.setdefault(keys[0], record)
 
     def entity(self, entity):
         match = (entity.get("summary") or {}).get("value_match") or {}
@@ -243,8 +239,6 @@ class _Index:
             if match.get("evidence") == "VALUE":
                 return (self.value.get((match.get("credential_type"), match["fingerprint"]))
                         or self.value.get(("OPAQUE_VALUE", match["fingerprint"])))
-        if entity["provider"] == "gcp" and str(entity["object_id"]).startswith("serviceAccountKey:"):
-            return self.gcp.get(entity["object_id"])
         return None
 
 
@@ -357,8 +351,6 @@ def _entity_facts(entity, owners) -> dict:
     _, created = fact("created")
     reported_null, expires = fact("expires", end_of_day=True)
     never = reported_null or _lookup(tree, ("never_expires",))[1] is True
-    if expires and expires.startswith("9999-"):  # GCP's user-managed keys never expire
-        expires, never = None, True
     _, last_used = fact("last_used")
     name = owner.get("name") or _label(_lookup(tree, _FIELDS["name"])[1])
     if name and name.startswith(("projects/", "organizations/", "subscriptions/")):
@@ -367,10 +359,6 @@ def _entity_facts(entity, owners) -> dict:
     creator = _label(_lookup(tree, _FIELDS["creator"])[1])
     if owner.get("relation") == "created_by":
         creator = owner.get("label") or creator
-    # GitLab's explicit creator summary is separate from its token owner.
-    gitlab_creator = (tree.get("summary") or {}).get("issuer", {}) if entity["provider"] == "gitlab" else {}
-    if isinstance(gitlab_creator, dict) and gitlab_creator.get("status") in {"observed", "observed_in_audit"}:
-        creator = _label(gitlab_creator.get("profile")) or _label(gitlab_creator.get("id")) or creator
     state = _ISSUED_STATE.get(summary.get("normalized_state"), "unknown")
     if state == "unknown" and owner.get("state") == "REVOKED_OR_EXPIRED":
         state = "revoked"

@@ -29,10 +29,10 @@ class MigrationError(ValueError):
 
 _TABLES = {
     "provider_connections", "provider_onboarding_sessions", "connections", "coverage_connections",
-    "scan_jobs", "scan_tasks", "gcp_oauth_sessions", "installation_settings", "scope_profiles", "scope_catalogs",
+    "scan_jobs", "scan_tasks", "installation_settings", "scope_profiles", "scope_catalogs",
     "selection_drafts",
 }
-_CONTROL_SETTINGS = {"gcp_oauth_client": [("sealed",)], "ticket_system": [("sealed",)],
+_CONTROL_SETTINGS = {"ticket_system": [("sealed",)],
                      "contact_delivery": [("mail", "sealed"), ("slack", "sealed")]}
 _CONTROL_PREFIXES = ("github_app_manifest:", "aws_sso_login:")
 _REF_NAMES = {"secret_ref", "secret_refs"}
@@ -237,12 +237,6 @@ def migrate(engine, legacy_keys, recipient_keys, control_keys, *, offline=False,
                 if key in revisions:
                     save(name, row, auth_revision=revisions[key])
 
-        for row in rows.get("gcp_oauth_sessions", []):
-            data = copy.deepcopy(row["data"])
-            for key in ("pending", "sealed"):
-                if data.get(key):
-                    data[key] = control(data[key])
-            save("gcp_oauth_sessions", row, data=data)
         for row in rows.get("installation_settings", []):
             key, value = row["key"], copy.deepcopy(row["value"])
             allowed = set(_CONTROL_SETTINGS.get(key, ()))

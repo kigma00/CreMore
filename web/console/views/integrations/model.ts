@@ -37,8 +37,6 @@ export type Method = {
   advanced?: boolean; editions?: string[]; reference?: boolean; reference_keys?: string[]; flow?: string;
   /** The editions this method serves one of its purposes in, when narrower than the method's (catalog.methods_for). */
   purpose_editions?: Partial<Record<Purpose, string[]>>;
-  /** CreMore makes this credential itself (a Microsoft app certificate); its fields only say what it is for. */
-  generated?: boolean;
   auth_first?: { context: string[] };
   /** False keeps this method available only to its existing credential owner. */
   new_setup?: boolean;
@@ -140,26 +138,8 @@ export function enabledPurposes(c: Pick<ProviderConnection, "plans" | "feature_e
   return PURPOSE_ORDER.filter(p => c.plans[p] && c.feature_enabled?.[p] !== false);
 }
 export type Created = { kind: string; id: string; purpose: Purpose; name?: string | null; collector_token?: string };
-/** The public part of a credential CreMore made (a Microsoft app certificate), kept as target.generated. */
-/** ``previous``: the one made before, still registered at the provider until an admin removes it there. */
-export type Previous = { kid?: string; thumbprint?: string };
-export type Generated = { certificate: string; thumbprint: string; sha256: string; not_before: string; not_after: string; previous?: Previous };
-/** How the worker's last renewal went (cremore.onboarding.renewal): a certificate CreMore made, a GitLab token's
- * rotation, or reading the token's expiry. */
+/** A historical credential renewal status retained on older connection records. */
 export type Renewed = { state: "OK" | "FAILED" | "RUNNING"; action?: "renew" | "retire" | "inspect"; code?: string | null; at?: string; renewed_at?: string };
-
-export function generatedOf(c: Pick<ProviderConnection, "target"> | null | undefined): Generated | null {
-  const value = c?.target.generated as Generated | undefined;
-  return value && typeof value.certificate === "string" && typeof value.thumbprint === "string" ? value : null;
-}
-
-/** A signing key CreMore made (an Okta service app's): only its public JWK is ever shown. */
-export type MadeKey = { public_jwk: Record<string, string>; kid: string; created_at: string; previous?: Previous };
-
-export function madeKeyOf(c: Pick<ProviderConnection, "target"> | null | undefined): MadeKey | null {
-  const value = c?.target.generated as MadeKey | undefined;
-  return value && typeof value.kid === "string" && value.public_jwk && typeof value.public_jwk === "object" ? value : null;
-}
 
 export type HealthItem = {
   key: string; kind: string; id: string; provider: string; name: string;
@@ -172,15 +152,6 @@ export type HealthItem = {
 export type Health = { items: HealthItem[] };
 export const HEALTH_PATH = "operations/connections";
 /** Services the company IdP already lists (its app names) that no connection covers yet. */
-export const SUGGESTIONS_PATH = "provider-connections/suggestions";
-export type Suggestion = { provider: string; apps: string[]; count: number };
-
-/** What a suggestion says about where it came from: the app names the IdP lists, a few of them. */
-export function suggestionText(item: Suggestion, L: Say): string {
-  const more = item.count - item.apps.length;
-  return L(`회사 IdP의 앱: ${item.apps.join(", ")}${more > 0 ? ` 외 ${more}개` : ""}`, `Company IdP apps: ${item.apps.join(", ")}${more > 0 ? ` and ${more} more` : ""}`);
-}
-
 /* ---------- catalog rules ---------- */
 
 /** Whether a field or permission with ``when: {target field: [values]}`` applies (catalog.applies); ``"*"``
@@ -593,8 +564,8 @@ export function healthOf(c: ProviderConnection, health: HealthItem[] | undefined
   return health.filter(item => keys.has(item.key));
 }
 
-/** Services of one vendor that are connected one after another (Atlassian's Confluence, Bitbucket and organization). */
-const FAMILIES: Record<string, string[]> = { Atlassian: ["confluence", "bitbucket", "atlassian"] };
+/** Related products shown together in the integration catalog. */
+const FAMILIES: Record<string, string[]> = {};
 
 /** The vendor a service belongs to and its other services, or null. */
 export function familyOf(provider: string): { name: string; others: string[] } | null {
@@ -694,11 +665,8 @@ export function renewalText(code: string | null | undefined, L: Say): string {
 
 type Sharing = Pick<ProviderConnection, "purposes" | "credential"> & { provider?: string; auth_method?: string };
 
-const workerIdentity = (c: Sharing) => c.provider === "gcp" && c.auth_method === "adc";
-
 /** One credential that both collects and acts (cremore.onboarding.service.shared_credentials): the daily collection
- * would open a credential that may revoke. Said on both integrations and with the plan; nothing is refused. The
- * worker's own Google Cloud identity (ADC) cannot be changed on the collecting side: there the acting one moves. */
+ * would open a credential that may revoke. Said on both integrations and with the plan; nothing is refused. */
 export function sharedNote(c: Sharing, L: Say): string {
   const others = c.credential.shared_with ?? [];
   if (!others.length) return "";
@@ -710,23 +678,16 @@ export function sharedNote(c: Sharing, L: Say): string {
   const s = many ? "s" : "";
   const verb = (plural: string, single: string) => (many ? plural : single);
   if (c.purposes.includes("remediation")) {
-    return workerIdentity(c)
-      ? L(`수집 연동 ${ko}도 워커 자신의 Google Cloud 신원(ADC)을 씁니다 · 조치는 Google 로그인으로 따로 두세요`,
-        `Collecting integration${s} ${en} ${verb("run", "runs")} as the worker's own Google Cloud identity (ADC) too · sign actions in with Google instead`)
-      : L(`수집 연동 ${ko}도 이 자격증명을 씁니다 · 조치용은 따로 두세요`,
+    return L(`수집 연동 ${ko}도 이 자격증명을 씁니다 · 조치용은 따로 두세요`,
         `Collecting integration${s} ${en} ${verb("use", "uses")} this credential too · give actions their own`);
   }
-  return workerIdentity(c)
-    ? L(`조치 연동 ${ko}도 워커 자신의 Google Cloud 신원(ADC)을 씁니다 · 조치 연동을 Google 로그인으로 바꾸세요`,
-      `Acting integration${s} ${en} ${verb("run", "runs")} as the worker's own Google Cloud identity (ADC) too · switch ${verb("them", "it")} to Google sign-in`)
-    : L(`조치 연동 ${ko}도 이 자격증명을 씁니다 · 수집용은 따로 두세요`,
+  return L(`조치 연동 ${ko}도 이 자격증명을 씁니다 · 수집용은 따로 두세요`,
       `Acting integration${s} ${en} ${verb("use", "uses")} this credential too · give collection its own`);
 }
 
-/** The integration whose credential step fixes a shared credential: this one, or for a collection that runs as the
- * worker's own Google Cloud identity, the acting one. */
+/** The integration whose credential step fixes a shared credential. */
 export function sharedFix(c: Sharing & { id: string }): string {
-  return workerIdentity(c) && !c.purposes.includes("remediation") ? c.credential.shared_with?.[0]?.id ?? c.id : c.id;
+  return c.id;
 }
 
 export function rowState(c: ProviderConnection, items: HealthItem[], L: Say, now = Date.now(), d?: Descriptor): RowState {
@@ -739,17 +700,7 @@ export function rowState(c: ProviderConnection, items: HealthItem[], L: Say, now
   if (c.sign_in_problem) return { tone: "warn", label: L("확인 필요", "Needs attention"),
     note: L("로그인에 쓰는 IdP가 아닌 사람 목록입니다 · 로그인 IdP를 사람 목록으로 연결하고 이 연동은 해제하세요",
       "This people directory is not the IdP people sign in with · connect the sign-in IdP and disconnect this one") };
-  // A certificate CreMore made renews itself; one that expired, or whose renewal failed, needs a person.
-  const made = c.status === "ACTIVE" ? generatedOf(c) : null;
-  if (made) {
-    const days = Math.ceil((Date.parse(made.not_after) - now) / 86_400_000);
-    if (days <= 0) return { tone: "warn", label: L("확인 필요", "Needs attention"),
-      note: L("인증서가 만료됐습니다 · 새 인증서를 만들어 앱 등록에 올리세요", "The certificate expired · make a new one and upload it to the app registration"), fix: "reauth" };
-    if (c.checks.renewal?.state === "FAILED" && c.checks.renewal.action !== "retire") return { tone: "warn", label: L("확인 필요", "Needs attention"),
-      note: L(`인증서 자동 교체 실패 · ${days}일 뒤 만료 · ${renewalText(c.checks.renewal.code, L)}`,
-        `Certificate renewal failed · expires in ${days} day${days === 1 ? "" : "s"} · ${renewalText(c.checks.renewal.code, L)}`), fix: "reauth" };
-  }
-  // A token that renews itself (GitLab) and could not: reading its expiry, or the rotation.
+  // Keep historical renewal failures visible for older connections.
   const renewal = c.status === "ACTIVE" ? c.checks.renewal : null;
   if (renewal?.state === "FAILED" && renewal.action !== "retire") return { tone: "warn", label: L("확인 필요", "Needs attention"),
     note: `${renewal.action === "inspect" ? L("토큰 확인 실패", "Token check failed") : L("자동 교체 실패", "Renewal failed")} · ${renewalText(renewal.code, L)}`, fix: "reauth" };
@@ -798,9 +749,9 @@ export function rowState(c: ProviderConnection, items: HealthItem[], L: Say, now
 /* ---------- what a connection found ---------- */
 
 // Issued inventory providers as the catalog names them (credential_records._ISSUER plus AWS).
-const ISSUER: Record<string, string> = { aws_iam: "aws", azure_entra: "azure", azure_resource_manager: "azure", azure_key_vault: "azure" };
+const ISSUER: Record<string, string> = { aws_iam: "aws" };
 // Content source types by the catalog provider that scans them.
-const SCANNED: Record<string, string> = { s3: "aws", gcp: "gcp", azure_blob: "azure" };
+const SCANNED: Record<string, string> = { s3: "aws" };
 
 export const issuerProvider = (provider: string) => ISSUER[provider] ?? provider;
 export const scanProvider = (sourceType: string) => SCANNED[sourceType] ?? sourceType;

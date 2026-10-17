@@ -693,19 +693,9 @@ from cremore.db.annotation_store import register_tables as register_annotation_t
 
 finding_annotations = register_annotation_tables(metadata)
 
-from cremore.coverage.gcp_store import register_tables as register_gcp_tables
-
-gcp_collection_tables = register_gcp_tables(metadata)
-
 from cremore.coverage.storage_receipts import register_tables as register_storage_receipts
 
 storage_receipt_table = register_storage_receipts(metadata)
-
-# Integration (refactoring + gcp-dashboard-oauth): both branches appended a table
-# here; the storage receipt table and the browser-bound GCP OAuth sessions coexist.
-from cremore.coverage.gcp_oauth_store import register_tables as register_gcp_oauth_tables
-
-gcp_oauth_sessions = register_gcp_oauth_tables(metadata)
 
 from cremore.governance.ownership import register_tables as register_context_tables
 

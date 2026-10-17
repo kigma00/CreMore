@@ -9,7 +9,7 @@ from sqlalchemy import select
 from cremore.coverage import METADATA_JOB_KIND
 from cremore.coverage.metadata_models import MetadataConnectionSpec
 from cremore.coverage.metadata_store import MetadataStore
-from cremore.coverage.providers import validate_spec
+from cremore.coverage.providers import _ADAPTERS, validate_spec
 from cremore.coverage.store import utc
 from cremore.db.task_store import TaskStore
 from cremore.domain.models import FindingEvent, ScanJob
@@ -55,7 +55,8 @@ def poll_metadata_schedules(repo, settings, *, now=None):
     now = utc(now or datetime.now(UTC))
     store = MetadataStore(repo)
     for candidate in store.list_connections():
-        if (not candidate["enabled"] or candidate["spec"].get("schema_version") != 2
+        if (not candidate["enabled"] or candidate["spec"].get("provider") not in _ADAPTERS
+                or candidate["spec"].get("schema_version") != 2
                 or not candidate["spec"].get("schedule_minutes")):
             continue
         with store.transaction() as conn:
@@ -67,17 +68,6 @@ def poll_metadata_schedules(repo, settings, *, now=None):
             spec = MetadataConnectionSpec.model_validate(row["spec"])
             if not spec.schedule_minutes:
                 continue
-            if spec.provider == "gcp":
-                from cremore.coverage.gcp_store import linked_source_disabled
-                if linked_source_disabled(bound, row["id"]):
-                    continue
-                if spec.auth_type == "google_oauth":
-                    from cremore_gcp_provider.oauth import REAUTH
-                    latest_run = current.connection_runs(row["id"], limit=1)["items"]
-                    if (latest_run and latest_run[0]["revision"] == row["revision"]
-                            and REAUTH.intersection(latest_run[0]["reasons"])):
-                        result["skipped"] += 1
-                        continue
             validate_spec(spec)
             if connection_job(bound, row["id"], active=True):
                 result["skipped"] += 1

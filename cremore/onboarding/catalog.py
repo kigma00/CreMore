@@ -13,20 +13,13 @@ A module listed in ``MODULES`` defines:
     the check still answers it) and what step 4 asks (a plan field's ``edition_defaults`` {edition: value} replaces
     its ``default`` in those editions),
     ``auth_methods`` [{id, label, label_ko, renewal, purposes, fields, advanced?, editions?, purpose_editions?,
-    reference?, reference_keys?, generated?, new_setup?}] in recommended order: the first method that serves a purpose
+    reference?, reference_keys?, new_setup?}] in recommended order: the first method that serves a purpose
     (in the chosen edition) is the one the wizard recommends; ``purpose_editions`` {purpose: [edition]} narrows the
     editions a method serves one of its purposes in. ``reference: False`` refuses a ``vault://`` reference in place
     of the fields; otherwise ``reference_keys`` names the keys that KV entry holds (``["token"]`` unless given).
-    ``generated: True``: CreMore makes the credential itself (a key pair) with ``generate``; its fields only
-    say what it is for,
     ``replaced_by`` (optional): the provider new connections are made with instead; existing ones keep running.
 ``credential(provider, method, fields) -> {role: envelope}``: the credential fields as the envelope(s) to
     seal; ``"credential"`` is the one every use shares.
-``generate(provider, method, fields, target) -> ({role: envelope}, public)`` (a module with a generated
-    method): the credential CreMore makes, and the part of it that may be shown (a public certificate) --
-    kept as the connection's ``target.generated``.
-``renew_due(record, kept, now)`` and ``renew(record, envelope, action, kept, context)`` (optional, for a
-    generated credential the worker renews itself; cremore.onboarding.renewal): what is due and doing it.
 ``check(connection, purpose, secrets, context) -> [{permission, status, detail?}]``: runs in the worker.
 ``credential_identity(connection, secrets, context) -> [str] | None`` (optional, runs in the worker's check): what
     acts, when that is not the stored token itself -- a GitHub App, a Google account, the worker's own ADC -- so one
@@ -89,19 +82,9 @@ _CODE = re.compile(r"[A-Z][A-Z0-9_]{2,80}")
 
 MODULES = (
     "cremore_github_provider.onboarding",
-    "cremore_gitlab_provider.onboarding",
-    "cremore_atlassian_provider.onboarding",
+    "cremore_aws_provider.onboarding",
     "cremore_notion_provider.onboarding",
     "cremore_slack_provider.onboarding",
-    "cremore_aws_provider.onboarding",
-    "cremore_gcp_provider.onboarding",
-    "cremore_gcp_provider.workspace.onboarding",
-    "cremore_azure_provider.onboarding",
-    "cremore_vault_provider.onboarding",
-    "cremore_okta_provider.onboarding",
-    "cremore_keycloak_provider.onboarding",
-    "cremore.onboarding.external_vault",
-    "cremore_website_provider.onboarding",
 )
 _ID = re.compile(r"[a-z][a-z0-9_]{1,40}")
 # A permission is named as its provider names it (``storage.buckets.list``, ``admin:org``).
@@ -372,9 +355,7 @@ def validate(descriptor) -> dict:
         keys = method.get("reference_keys", ["token"])
         if not isinstance(keys, list) or not keys or any(not isinstance(key, str) or not key for key in keys):
             raise CatalogError(f"{where} auth method {method['id']}: reference_keys")
-        if method.get("generated") and (method.get("reference") is not False
-                                        or any(field.get("secret") for field in method.get("fields") or [])):
-            # A credential CreMore makes has no secret to type and nothing a vault:// reference could stand for.
+        if method.get("generated"):
             raise CatalogError(f"{where} auth method {method['id']}: generated")
     for purpose in purposes:
         if not any(purpose in method["purposes"] for method in methods):
@@ -397,9 +378,6 @@ def _load():
                         raise CatalogError(f"{descriptor['provider']}: {function_name}")
             if descriptor["provider"] in providers:
                 raise CatalogError(f"{descriptor['provider']}: registered twice")
-            if (any(method.get("generated") for method in descriptor["auth_methods"])
-                    and not callable(getattr(module, "generate", None))):
-                raise CatalogError(f"{name}: generate")
             providers[descriptor["provider"]] = descriptor
             modules[descriptor["provider"]] = module
     for descriptor in providers.values():

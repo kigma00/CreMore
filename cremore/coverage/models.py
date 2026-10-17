@@ -7,7 +7,6 @@ import json
 import re
 from datetime import datetime
 from typing import Annotated, Literal
-from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -15,9 +14,7 @@ MAX_BATCH = 250
 VERSION = 1
 SCHEME = "cremore-credential-fingerprint-v1/hmac-sha256"
 V1_PURPOSE = {"aws_iam": "issuer_inventory", "aws_cloudtrail": "usage",
-              "aws_secrets_manager": "vault_metadata", "aws_ssm": "vault_metadata",
-              "vault": "vault_metadata", "openbao": "vault_metadata", "gcp_secret_manager": "vault_metadata",
-              "external_vault": "vault_metadata"}
+              "aws_secrets_manager": "vault_metadata", "aws_ssm": "vault_metadata"}
 # Schema 1 issuers whose credential_owner(issued) names who owns an issued key
 # (the departed-owner check, cremore.identity.leavers). Schema 2 providers
 # register theirs with their adapter (cremore.coverage.providers).
@@ -138,138 +135,34 @@ class AWSSession(StrictModel):
         return safe_label(value)
 
 
-class Mount(StrictModel):
-    name: str = Field(min_length=1, max_length=256)
-    kv_version: Literal[1, 2] = 2
-    prefixes: list[str] = Field(min_length=1, max_length=100)
-
-    @field_validator("name")
-    @classmethod
-    def valid_name(cls, value):
-        result = scope_path(value)
-        if not result:
-            raise ValueError("MOUNT_REQUIRED")
-        return result
-
-    @field_validator("prefixes")
-    @classmethod
-    def valid_prefixes(cls, values):
-        return list(dict.fromkeys(scope_path(value) for value in values))
-
-
-class VaultManagedEvidence(StrictModel):
-    """Issuer management evidence, distinct from a secret stored in a KV item."""
-
-    kind: Literal["SERVICE_TOKEN", "DYNAMIC_LEASE"]
-    lookup_status: Literal["COMPLETE", "FAILED"] = "COMPLETE"
-    issued_at: Timestamp = ""
-    expires_at: Timestamp = ""
-    last_renewal_at: Timestamp = ""
-    ttl_seconds: int | None = Field(default=None, ge=0, le=9223372036854775807)
-    renewable: bool | None = None
-    policies: list[str] = Field(default_factory=list, max_length=100)
-
-    @field_validator("policies")
-    @classmethod
-    def policy_names(cls, values):
-        if any(not re.fullmatch(r"[A-Za-z0-9_.@/-]{1,256}", safe_label(v)) for v in values):
-            raise ValueError("INVALID_VAULT_POLICY_NAME")
-        return values
-
-    @model_validator(mode="after")
-    def failure_has_no_invented_metadata(self):
-        if self.lookup_status == "FAILED" and (self.issued_at or self.expires_at or self.last_renewal_at
-                or self.ttl_seconds is not None or self.renewable is not None or self.policies):
-            raise ValueError("FAILED_VAULT_LOOKUP_HAS_NO_METADATA")
-        return self
-
-
-SERVER_VAULTS = ("aws_secrets_manager", "aws_ssm", "vault", "openbao")
-_PEM_CERT = re.compile(r"(?:-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----\s*)+")
-
-
-class VaultServerAuth(StrictModel):
-    """A connection's own Vault/OpenBao login for a server-side read.
-
-    It is never the installation's secret-store identity. Kubernetes and JWT
-    logins read a token file the deployment mounted for this connection under
-    ``VAULT_CONNECTION_TOKEN_DIR``; a token login uses a value sealed on arrival.
-    """
-
-    method: Literal["kubernetes", "jwt", "token"]
-    mount: str = Field(default="", max_length=256)
-    # The Vault Enterprise namespace that holds the auth mount, if any.
-    namespace: str = Field(default="", max_length=512)
-    role: str = Field(default="", pattern=r"^[A-Za-z0-9_.@-]{0,128}$")
-    token_file: str = Field(default="", pattern=r"^(?:[A-Za-z0-9_-][A-Za-z0-9._-]{0,127})?$")
-
-    @field_validator("mount", "namespace")
-    @classmethod
-    def valid_mount(cls, value):
-        return scope_path(value) if value else value
-
-    @model_validator(mode="after")
-    def complete_login(self):
-        if self.method == "token":
-            if self.role or self.token_file or self.mount or self.namespace:
-                raise ValueError("TOKEN_LOGIN_TAKES_NO_ROLE")
-            return self
-        if not self.role or not self.token_file:
-            raise ValueError("VAULT_LOGIN_ROLE_AND_TOKEN_FILE_REQUIRED")
-        if not self.mount:
-            self.mount = self.method
-        return self
+SERVER_VAULTS = ("aws_secrets_manager", "aws_ssm")
 
 
 def worker_collected(spec) -> bool:
     """AWS inventory, or an AWS secret store an administrator moved to the worker."""
-    return spec.provider in ("aws_iam", "aws_cloudtrail") or bool(getattr(spec, "server_collection", False))
+    return spec.provider in ("aws_iam", "aws_cloudtrail") or (
+        spec.provider in ("aws_secrets_manager", "aws_ssm") and bool(getattr(spec, "server_collection", False))
+    )
 
 
 class ConnectionSpec(StrictModel):
     name: str = Field(min_length=1, max_length=120)
-    provider: Literal["aws_iam", "aws_cloudtrail", "aws_secrets_manager", "vault", "openbao", "gcp_secret_manager", "aws_ssm",
-                      "external_vault"]
+    provider: Literal["aws_iam", "aws_cloudtrail", "aws_secrets_manager", "aws_ssm"]
     account_id: str = Field(default="", pattern=r"^(?:[0-9]{12})?$")
     regions: list[str] = Field(default_factory=list, max_length=50)
     references: list[str] = Field(default_factory=list, max_length=1000)
     prefixes: list[str] = Field(default_factory=list, max_length=100)
-    endpoint: str = Field(default="", max_length=2048)
-    namespaces: list[str] = Field(default_factory=lambda: [""], min_length=1, max_length=100)
-    mounts: list[Mount] = Field(default_factory=list, max_length=100)
-    project: str = Field(default="", max_length=128)
     version_selector: str = Field(default="latest", pattern=r"^[A-Za-z0-9_-]{1,63}$")
     include_previous_versions: bool = False
     max_versions_per_secret: int = Field(default=20, ge=1, le=1000)
-    include_token_accessors: bool = False
-    lease_prefixes: list[str] = Field(default_factory=list, max_length=100)
     service_credentials: bool = False
     credential_report: bool = False
     last_used: bool = False
-    # None preserves the legacy installation switch until the connection is edited.
     iam_policy_metadata: bool | None = None
     schedule_minutes: int = Field(default=0, ge=0, le=10080)
-    # Legacy AWS connections follow the installation switch. New onboarding
-    # explicitly opts in to a schedule owned by this connection.
     schedule_source: Literal["installation", "connection"] = "installation"
-    # Opt-in: the CreMore worker reads this secret store instead of the
-    # customer-side CLI -- AWS with the account's approved scanner access, Vault
-    # and OpenBao only when it is the installation's own secret store.
     server_collection: bool = False
-    # AWS server collection only: the account's value-reader role reads every value, chained
-    # from the scanner session (cremore_aws_provider.aws_sessions). Empty: the scanner reads.
     value_reader_role: str = Field(default="", pattern=r"^(?:[A-Za-z0-9+=,.@_-]{1,64})?$")
-    # A server read of a Vault/OpenBao cluster other than the installation's
-    # own secret store, with this connection's login (design decision 10).
-    server_auth: VaultServerAuth | None = None
-    # A public CA certificate for that cluster's TLS. Never a private key.
-    tls_ca_pem: str = Field(default="", max_length=16384)
-    # Sealed on arrival through the token endpoint; the API never returns it.
-    secret_refs: dict[Literal["vault_token"], str] = Field(default_factory=dict)
-    # external_vault: the product the operator named, and the installed reader
-    # that reads it directly (empty: the customer-side JSON Lines input).
-    product: str = Field(default="", max_length=120)
-    reader: str = Field(default="", pattern=r"^(?:[a-z][a-z0-9_-]{0,63})?$")
     cloudtrail_source: Literal["event_history", "s3"] = "event_history"
     cloudtrail_event_name: Literal["", "CreateAccessKey"] = ""
     trail_bucket: str = Field(default="", max_length=63, pattern=r"^(?:[a-z0-9][a-z0-9.-]{1,61}[a-z0-9])?$")
@@ -288,19 +181,6 @@ class ConnectionSpec(StrictModel):
             raise ValueError("NAME_REQUIRED")
         return result
 
-    @field_validator("product")
-    @classmethod
-    def valid_product(cls, value):
-        return safe_label(value.strip())
-
-    @field_validator("tls_ca_pem")
-    @classmethod
-    def valid_ca(cls, value):
-        value = value.strip()
-        if value and (not _PEM_CERT.fullmatch(value + "\n") or "PRIVATE KEY" in value):
-            raise ValueError("TLS_CA_MUST_BE_A_PEM_CERTIFICATE")
-        return value
-
     @field_validator("regions")
     @classmethod
     def valid_regions(cls, values):
@@ -308,34 +188,12 @@ class ConnectionSpec(StrictModel):
             raise ValueError("INVALID_REGION")
         return list(dict.fromkeys(values))
 
-    @field_validator("references", "prefixes", "namespaces", "trail_prefixes")
+    @field_validator("references", "prefixes", "trail_prefixes")
     @classmethod
     def valid_paths(cls, values):
         if any(len(value) > 2048 for value in values):
             raise ValueError("SCOPE_TOO_LONG")
         return list(dict.fromkeys(scope_path(value) for value in values))
-
-    @field_validator("lease_prefixes")
-    @classmethod
-    def valid_lease_prefixes(cls, values):
-        checked = [scope_path(v) for v in values]
-        if any(not re.fullmatch(r"[A-Za-z0-9_.@+-]+(?:/[A-Za-z0-9_.@+-]+)+", v) or len(v) > 1024
-               for v in checked):
-            raise ValueError("EXPLICIT_LEASE_PREFIX_REQUIRED")
-        return list(dict.fromkeys(checked))
-
-    @field_validator("endpoint")
-    @classmethod
-    def valid_endpoint(cls, value):
-        if not value:
-            return value
-        safe_label(value)
-        parsed = urlsplit(value)
-        if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
-                or (parsed.scheme != "https" and not
-                    (parsed.scheme == "http" and parsed.hostname in ("localhost", "127.0.0.1", "::1")))):
-            raise ValueError("HTTPS_ENDPOINT_REQUIRED")
-        return value.rstrip("/")
 
     @model_validator(mode="after")
     def complete_scope(self):
@@ -343,55 +201,27 @@ class ConnectionSpec(StrictModel):
             raise ValueError("IAM_POLICY_METADATA_REQUIRES_IAM")
         if self.cloudtrail_event_name and self.provider != "aws_cloudtrail":
             raise ValueError("EVENT_FILTER_REQUIRES_CLOUDTRAIL")
-        if self.provider.startswith("aws_") and not self.account_id:
+        if not self.account_id:
             raise ValueError("ACCOUNT_REQUIRED")
         if self.provider in ("aws_secrets_manager", "aws_ssm", "aws_cloudtrail") and not self.regions:
             raise ValueError("REGIONS_REQUIRED")
-        if self.provider in ("vault", "openbao") and (not self.endpoint or not (
-                self.mounts or self.include_token_accessors or self.lease_prefixes)):
-            raise ValueError("VAULT_ENDPOINT_AND_MOUNTS_REQUIRED")
-        if self.provider not in ("vault", "openbao") and (self.include_token_accessors or self.lease_prefixes):
-            raise ValueError("VAULT_MANAGEMENT_OPTIONS_REQUIRE_VAULT")
-        if self.provider not in ("vault", "openbao", "aws_secrets_manager") and (
-                self.include_previous_versions or self.max_versions_per_secret != 20):
+        if self.provider != "aws_secrets_manager" and (self.include_previous_versions or self.max_versions_per_secret != 20):
             raise ValueError("VERSION_HISTORY_NOT_SUPPORTED")
         if self.include_previous_versions and self.version_selector != "latest":
             raise ValueError("VERSION_HISTORY_REQUIRES_LATEST_SELECTOR")
-        if self.provider in ("vault", "openbao") and self.version_selector != "latest" and not re.fullmatch(
-                r"[1-9][0-9]{0,9}", self.version_selector):
-            raise ValueError("KV_VERSION_MUST_BE_POSITIVE_INTEGER")
-        if self.provider in ("vault", "openbao") and not self.mounts and (
-                self.include_previous_versions or self.version_selector != "latest"):
-            raise ValueError("KV_VERSION_OPTIONS_REQUIRE_MOUNTS")
         if self.provider == "aws_ssm" and not self.prefixes:
             raise ValueError("PARAMETER_PREFIXES_REQUIRED")
-        if self.provider == "gcp_secret_manager" and not re.fullmatch(r"[a-z0-9][a-z0-9-]{3,126}[a-z0-9]", self.project):
-            raise ValueError("PROJECT_REQUIRED")
         if self.provider != "aws_iam" and (self.service_credentials or self.credential_report or self.last_used):
             raise ValueError("ISSUER_OPTIONS_REQUIRE_IAM")
         if self.server_collection and self.provider not in SERVER_VAULTS:
             raise ValueError("SERVER_COLLECTION_NOT_SUPPORTED")
-        if self.value_reader_role and (self.provider not in ("aws_secrets_manager", "aws_ssm") or not self.server_collection):
+        if self.value_reader_role and (self.provider not in SERVER_VAULTS or not self.server_collection):
             raise ValueError("VALUE_READER_REQUIRES_AWS_SERVER_COLLECTION")
         if self.value_reader_role and self.provider == "aws_secrets_manager" and not self.references:
-            # The role reads only the secrets its stack names and lists none.
             raise ValueError("VALUE_READER_REQUIRES_SECRET_ARNS")
-        if (self.server_auth or self.tls_ca_pem) and (self.provider not in ("vault", "openbao") or not self.server_collection):
-            raise ValueError("VAULT_SERVER_LOGIN_REQUIRES_SERVER_COLLECTION")
-        if self.secret_refs and (self.server_auth is None or self.server_auth.method != "token"):
-            raise ValueError("VAULT_TOKEN_REQUIRES_TOKEN_LOGIN")
-        if self.provider == "external_vault":
-            if not self.product:
-                raise ValueError("EXTERNAL_VAULT_PRODUCT_REQUIRED")
-            if not self.prefixes:
-                raise ValueError("EXTERNAL_VAULT_DECLARED_SCOPE_REQUIRED")
-            if self.references or self.regions or self.account_id or self.endpoint or self.mounts:
-                raise ValueError("EXTERNAL_VAULT_SCOPE_IS_PATH_PREFIXES")
-        elif self.product or self.reader:
-            raise ValueError("PRODUCT_AND_READER_REQUIRE_EXTERNAL_VAULT")
         if self.schedule_minutes and (self.schedule_minutes < 5 or not worker_collected(self)):
             raise ValueError("INVALID_AWS_INVENTORY_SCHEDULE")
-        if self.schedule_source == "connection" and not (self.provider.startswith("aws_") and worker_collected(self)):
+        if self.schedule_source == "connection" and not worker_collected(self):
             raise ValueError("INVALID_AWS_INVENTORY_SCHEDULE")
         if self.cloudtrail_source == "s3":
             if self.provider != "aws_cloudtrail" or not self.trail_bucket or not self.trail_prefixes:
@@ -409,10 +239,7 @@ class ConnectionSpec(StrictModel):
                         or arn[2] != "secretsmanager" or arn[3] not in self.regions or arn[4] != self.account_id
                         or not re.fullmatch(r"secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}", arn[5])):
                     raise ValueError("SECRET_REFERENCE_OUTSIDE_SCOPE")
-        if self.provider == "gcp_secret_manager" and any(not re.fullmatch(
-                r"projects/" + re.escape(self.project) + r"/secrets/[A-Za-z0-9_-]{1,255}", ref) for ref in self.references):
-            raise ValueError("GCP_REFERENCE_OUTSIDE_SCOPE")
-        if self.provider in ("aws_iam", "aws_cloudtrail", "vault", "openbao") and self.references:
+        if self.provider in ("aws_iam", "aws_cloudtrail") and self.references:
             raise ValueError("REFERENCES_NOT_SUPPORTED_FOR_PROVIDER")
         return self
 
@@ -439,12 +266,11 @@ class Observation(StrictModel):
     mount: str = Field(default="", max_length=256)
     version: str = Field(default="", max_length=256)
     version_state: Literal["CURRENT", "PREVIOUS", "DELETED", "DESTROYED", "UNKNOWN"] = "CURRENT"
-    evidence: Literal["VALUE", "IDENTIFIER", "UNRESOLVED", "ISSUED", "ROOT_STATUS", "USER_STATUS", "OPERATION", "SESSION_ISSUED", "KEY_CREATED", "USAGE", "MANAGED"]
+    evidence: Literal["VALUE", "IDENTIFIER", "UNRESOLVED", "ISSUED", "ROOT_STATUS", "USER_STATUS", "OPERATION", "SESSION_ISSUED", "KEY_CREATED", "USAGE"]
     credential_type: Code = "UNKNOWN"
     fingerprint: Digest | None = None
     # Private HMAC comparison evidence; never the raw provider SHA256 digest.
     provider_digest: Digest | None = None
-    issuer_identifier: str = Field(default="", max_length=512)
     identifier: str = Field(default="", pattern=r"^[A-Za-z0-9_+=,.@-]{0,128}$")
     principal_arn: str = Field(default="", max_length=2048)
     state: str = Field(default="UNKNOWN", pattern=r"^[A-Za-z_]{1,32}$")
@@ -463,7 +289,6 @@ class Observation(StrictModel):
     operation: CollectionOperation | None = None
     session: AWSSession | None = None
     session_fingerprint: Digest | None = None
-    vault_managed: VaultManagedEvidence | None = None
     reason: Code | None = None
 
     @field_validator("created_at", "last_used_at")
@@ -473,16 +298,6 @@ class Observation(StrictModel):
             raise ValueError("TIMEZONE_REQUIRED")
         return value
 
-    @field_validator("issuer_identifier")
-    @classmethod
-    def safe_issuer_identifier(cls, value):
-        if value:
-            safe_label(value)
-            from cremore_gcp.linkage import is_service_account_key_identifier
-            if not is_service_account_key_identifier(value):
-                raise ValueError("INVALID_GCP_ISSUER_IDENTIFIER")
-        return value
-
     @field_validator("reference", "namespace", "mount", "version", "principal_arn", "identifier")
     @classmethod
     def safe_metadata(cls, value):
@@ -490,19 +305,8 @@ class Observation(StrictModel):
 
     @model_validator(mode="after")
     def consistent_evidence(self):
-        if self.issuer_identifier and (self.evidence != "VALUE" or self.credential_type != "GCP_SERVICE_ACCOUNT"):
-            raise ValueError("ISSUER_IDENTIFIER_REQUIRES_GCP_VALUE")
         if self.provider_digest is not None and (self.evidence != "VALUE" or self.credential_type != "GITHUB_TOKEN"):
             raise ValueError("PROVIDER_DIGEST_REQUIRES_GITHUB_VALUE")
-        if (self.evidence == "MANAGED") != (self.vault_managed is not None):
-            raise ValueError("VAULT_MANAGED_EVIDENCE_REQUIRED")
-        if self.evidence == "MANAGED" and (self.identifier or self.version or self.state != "UNKNOWN"
-                                          or self.version_state != "UNKNOWN" or self.principal_arn):
-            raise ValueError("VAULT_MANAGEMENT_IS_NOT_VALUE_OR_VALIDITY_EVIDENCE")
-        if self.vault_managed is not None and self.credential_type != "VAULT_" + self.vault_managed.kind:
-            raise ValueError("VAULT_MANAGEMENT_TYPE_MISMATCH")
-        if self.vault_managed is not None and self.vault_managed.lookup_status == "FAILED" and not self.reason:
-            raise ValueError("FAILED_VAULT_LOOKUP_REASON_REQUIRED")
         if (self.evidence == "VALUE") != (self.fingerprint is not None):
             raise ValueError("VALUE_FINGERPRINT_REQUIRED")
         if self.evidence in ("IDENTIFIER", "ISSUED", "SESSION_ISSUED", "KEY_CREATED", "USAGE") and not self.identifier:
@@ -568,8 +372,6 @@ class Finish(StrictModel):
     item_count: int = Field(ge=0, le=250000)
     status: Literal["COMPLETE", "PARTIAL", "FAILED"]
     reasons: list[Code] = Field(default_factory=list, max_length=100)
-    # Only an external vault's collector says how it knows the run was whole.
-    completeness: Literal["READER_REPORTED", "OPERATOR_DECLARED"] | None = None
 
 
 def weakest_completeness(values):
@@ -579,20 +381,6 @@ def weakest_completeness(values):
 
 
 def in_scope(spec: ConnectionSpec, item: Observation) -> bool:
-    if item.evidence == "MANAGED":
-        if spec.provider not in ("vault", "openbao") or item.namespace not in spec.namespaces or item.vault_managed is None:
-            return False
-        if item.vault_managed.kind == "SERVICE_TOKEN":
-            return bool(spec.include_token_accessors and item.mount == "auth/token" and re.fullmatch(
-                r"auth/token/accessors/[A-Za-z0-9_-]{1,128}(?:\.[A-Za-z0-9_-]{1,128})?", item.reference))
-        try:
-            if scope_path(item.reference) != item.reference or not re.fullmatch(
-                    r"[A-Za-z0-9_.@+-]+(?:/[A-Za-z0-9_.@+-]+)+", item.reference):
-                return False
-        except ValueError:
-            return False
-        return (item.mount == item.reference.split("/")[0] and any(
-            item.reference.startswith(prefix + "/") for prefix in spec.lease_prefixes))
     if spec.provider == "aws_cloudtrail":
         if item.evidence == "OPERATION":
             return (item.account_id == spec.account_id and item.operation is not None and
@@ -640,24 +428,4 @@ def in_scope(spec: ConnectionSpec, item: Observation) -> bool:
             # SM appends six random characters to the name in the ARN.
             name = re.sub(r"-[A-Za-z0-9]{6}$", "", name)
         return not spec.prefixes or any(name == prefix or name.startswith(prefix.rstrip("/") + "/") for prefix in spec.prefixes)
-    if spec.provider == "external_vault":
-        # The declared scope is path prefixes; "" declares the whole export.
-        try:
-            if not item.reference or scope_path(item.reference) != item.reference:
-                return False
-        except ValueError:
-            return False
-        return (not item.account_id and not item.region and not item.namespace and not item.mount
-                and any(not prefix or item.reference == prefix or item.reference.startswith(prefix + "/")
-                        for prefix in spec.prefixes))
-    if spec.provider in ("vault", "openbao"):
-        try:
-            if scope_path(item.reference) != item.reference:
-                return False
-        except ValueError:
-            return False
-        return item.namespace in spec.namespaces and any(
-            item.mount == mount.name and any(not prefix or item.reference == prefix or
-                item.reference.startswith(prefix + "/") for prefix in mount.prefixes) for mount in spec.mounts)
-    return bool(re.fullmatch(r"projects/" + re.escape(spec.project) + r"/secrets/[A-Za-z0-9_-]{1,255}", item.reference)) and (
-        not spec.references or item.reference in spec.references)
+    return False

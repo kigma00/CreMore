@@ -358,55 +358,6 @@ def register(ctx: DashboardContext) -> None:
 
         return httpx.Client(timeout=15.0, follow_redirects=False)
 
-    # --- the company's domains, owned as their DNS says (cremore/domains.py) -------------------------------------
-    # Any analyst reads which are verified; an admin adds one, reads the record to publish, asks the DNS, renews the
-    # challenge, allows its internal sites or removes it. Every change is audited with it.
-
-    def _domains(call, response: Response | None = None):
-        from cremore import domains
-
-        if response is not None:
-            response.headers["Cache-Control"] = "no-store"  # an admin's answer carries the record to publish
-        try:
-            return call(domains)
-        except domains.DomainError as exc:
-            raise _http(exc.http_status, exc.code) from None
-
-    @app.get("/api/v1/domains")
-    def list_domains(_actor: str = Depends(require_role("analyst"))) -> dict:
-        return _domains(lambda domains: domains.public(repo, admin=False))
-
-    @app.get("/api/v1/settings/domains")
-    def get_domains(response: Response, _actor: str = Depends(require_role("admin"))) -> dict:
-        return _domains(lambda domains: domains.public(repo, admin=True), response)
-
-    @app.post("/api/v1/settings/domains")
-    def add_domain(body: dict, response: Response, actor: str = Depends(require_role("admin"))) -> dict:
-        return _domains(lambda domains: domains.add(repo, (body or {}).get("name"), actor, _dt.datetime.now(_dt.UTC)),
-                        response)
-
-    @app.post("/api/v1/settings/domains/{name}/verify")
-    def verify_domain(name: str, response: Response, actor: str = Depends(require_role("admin"))) -> dict:
-        """Ask the DNS of the network CreMore runs in now; tests put a synthetic DNS on app.state.domain_dns_query."""
-        query = getattr(app.state, "domain_dns_query", None)
-        return _domains(lambda domains: domains.verify(repo, settings, name, actor, _dt.datetime.now(_dt.UTC), query),
-                        response)
-
-    @app.put("/api/v1/settings/domains/{name}/internal")
-    def set_domain_internal(name: str, body: dict, response: Response,
-                            actor: str = Depends(require_role("admin"))) -> dict:
-        return _domains(lambda domains: domains.set_internal(repo, name, (body or {}).get("allow_internal"), actor),
-                        response)
-
-    @app.post("/api/v1/settings/domains/{name}/challenge")
-    def renew_domain_challenge(name: str, response: Response, actor: str = Depends(require_role("admin"))) -> dict:
-        return _domains(lambda domains: domains.renew_challenge(repo, name, actor), response)
-
-    @app.delete("/api/v1/settings/domains/{name}", status_code=204)
-    def remove_domain(name: str, actor: str = Depends(require_role("admin"))) -> Response:
-        _domains(lambda domains: domains.remove(repo, name, actor))
-        return Response(status_code=204)
-
     @app.get("/api/v1/settings/sign-in")
     def get_sign_in(_actor: str = Depends(require_role("admin"))) -> dict:
         """How people sign in (AUTH_MODE, OIDC_*): set in the installation's configuration, read here. With OIDC, the
@@ -674,9 +625,8 @@ def register(ctx: DashboardContext) -> None:
         _saved({trigger_settings.KEY: trigger_settings.merged(repo, given)}, actor, trigger_settings.KEY,
                _changed(trigger_settings.stored(repo), given, given), plain=("change_feed_minutes",), base=base)
         current = _triggers_view()
-        _log.info("scan triggers set by %s: schedules=%s sqs=%s pubsub=%s servicebus=%s change_feeds=%s", actor,
-                  current["schedules"]["enabled"], current["sqs"]["enabled"], current["pubsub"]["enabled"],
-                  current["servicebus"]["enabled"], current["change_feeds"]["enabled"])
+        _log.info("scan triggers set by %s: schedules=%s sqs=%s change_feeds=%s", actor,
+                  current["schedules"]["enabled"], current["sqs"]["enabled"], current["change_feeds"]["enabled"])
         return current
 
     @app.get("/api/v1/settings/learned-false-positives")

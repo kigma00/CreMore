@@ -49,7 +49,6 @@ def validate_spec(spec):
             raise ValueError("NOTION_WORKSPACE_SCOPE_REQUIRED")
         uuid_text(scope.id)
     if (spec.options.mode != "inventory" or spec.options.page_size > 100
-            or spec.options.include_values
             or spec.options.include_audit_events or spec.options.include_actions
             or spec.options.locations or spec.options.include_deleted
             or spec.options.audit_created_after or spec.options.audit_lookback_days

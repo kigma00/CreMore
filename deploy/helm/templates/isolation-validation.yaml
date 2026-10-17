@@ -20,12 +20,12 @@
 {{- $_ := set $keySecrets $secret true }}
 {{- end }}
 {{- /* Whole Secret mounts and envFrom must never expose a role's key file to another role. */}}
-{{- range $secret := list .Values.applicationSecret.name .Values.internalTLS.apiSecretName .Values.internalTLS.webSecretName .Values.internalTLS.caSecretName .Values.databaseTLS.caSecretName .Values.auth.oidc.secret.name .Values.secretStore.secretName .Values.gcp.oauth.secretName .Values.gcp.adcSecretName .Values.aws.rolesAnywhere.secretName .Values.isolation.remediatorIdentity.gcp.adcSecretName .Values.isolation.remediatorIdentity.aws.rolesAnywhere.secretName .Values.siem.tokenSecretName .Values.siem.tlsSecretName }}
+{{- range $secret := list .Values.applicationSecret.name .Values.internalTLS.apiSecretName .Values.internalTLS.webSecretName .Values.internalTLS.caSecretName .Values.databaseTLS.caSecretName .Values.auth.oidc.secret.name .Values.secretStore.secretName .Values.aws.rolesAnywhere.secretName .Values.isolation.remediatorIdentity.aws.rolesAnywhere.secretName .Values.siem.tokenSecretName .Values.siem.tlsSecretName }}
 {{- if and $secret (hasKey $keySecrets $secret) }}{{ fail "role sealing key secrets must not be reused by other credential or TLS mounts" }}{{ end }}
 {{- end }}
 {{- if .Values.siem.enabled }}
 {{- range $secret := list .Values.siem.tokenSecretName .Values.siem.tlsSecretName }}
-{{- if and $secret (or (hasKey $seen $secret) (eq $secret $.Values.applicationSecret.name) (eq $secret $.Values.auth.oidc.secret.name) (eq $secret $.Values.secretStore.secretName) (eq $secret $.Values.gcp.oauth.secretName) (eq $secret $.Values.gcp.adcSecretName) (eq $secret $.Values.aws.rolesAnywhere.secretName) (eq $secret $.Values.isolation.remediatorIdentity.gcp.adcSecretName) (eq $secret $.Values.isolation.remediatorIdentity.aws.rolesAnywhere.secretName)) }}{{ fail "SIEM destination secrets must be separate from application and workload credentials" }}{{ end }}
+{{- if and $secret (or (hasKey $seen $secret) (eq $secret $.Values.applicationSecret.name) (eq $secret $.Values.auth.oidc.secret.name) (eq $secret $.Values.secretStore.secretName) (eq $secret $.Values.aws.rolesAnywhere.secretName) (eq $secret $.Values.isolation.remediatorIdentity.aws.rolesAnywhere.secretName)) }}{{ fail "SIEM destination secrets must be separate from application and workload credentials" }}{{ end }}
 {{- end }}
 {{- end }}
 {{- range $field := list "publicKeysConfigMap" "approvalPublicKeyConfigMap" }}
@@ -66,26 +66,5 @@
 {{- if $aws.webIdentity.enabled }}{{ $remediatorArn = $aws.webIdentity.roleArn }}{{ end }}
 {{- if and $collectorArn (eq $collectorArn $remediatorArn) }}{{ fail "collector and remediator must not share an AWS role" }}{{ end }}
 {{- if and .Values.aws.rolesAnywhere.enabled $aws.rolesAnywhere.enabled (eq .Values.aws.rolesAnywhere.secretName $aws.rolesAnywhere.secretName) }}{{ fail "collector and remediator must not share Roles Anywhere credentials" }}{{ end }}
-{{- $gcp := .Values.isolation.remediatorIdentity.gcp }}
-{{- if and $gcp.adcSecretName (empty $gcp.adcSecretKey) }}{{ fail "remediator GCP ADC secret key is required" }}{{ end }}
-{{- if and $gcp.adcSecretName (eq $gcp.adcSecretName .Values.gcp.adcSecretName) }}{{ fail "collector and remediator must not share a GCP ADC secret" }}{{ end }}
-{{- $azure := .Values.isolation.remediatorIdentity.azure.workloadIdentity }}
-{{- $uuid := "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" }}
-{{- if $azure.enabled }}
-{{- if not (regexMatch $uuid (toString $azure.clientId)) }}{{ fail "remediator Azure clientId must be an Entra application ID" }}{{ end }}
-{{- if and $azure.tenantId (not (regexMatch $uuid (toString $azure.tenantId))) }}{{ fail "remediator Azure tenantId must be a tenant ID" }}{{ end }}
-{{- $seconds := toString $azure.tokenExpirationSeconds }}
-{{- if or (not (regexMatch "^[0-9]{4,5}$" $seconds)) (lt (int $seconds) 3600) (gt (int $seconds) 86400) }}{{ fail "remediator Azure token expiration must be 3600..86400" }}{{ end }}
-{{- if and .Values.azure.workloadIdentity.enabled (eq (lower $azure.clientId) (lower .Values.azure.workloadIdentity.clientId)) }}{{ fail "collector and remediator must not share an Azure client ID" }}{{ end }}
-{{- end }}
-{{- range $key := list "iam.gke.io/gcp-service-account" "azure.workload.identity/client-id" }}
-{{- $collector := default "" (index $.Values.serviceAccounts.worker.annotations $key) }}
-{{- $remediator := default "" (index $.Values.serviceAccounts.remediator.annotations $key) }}
-{{- if eq $key "azure.workload.identity/client-id" }}
-{{- if $.Values.azure.workloadIdentity.enabled }}{{ $collector = $.Values.azure.workloadIdentity.clientId }}{{ end }}
-{{- if $azure.enabled }}{{ $remediator = $azure.clientId }}{{ end }}
-{{- end }}
-{{- if and $collector (eq (lower $collector) (lower $remediator)) }}{{ fail "collector and remediator must use distinct cloud workload identities" }}{{ end }}
-{{- end }}
 {{- if and .Values.siem.enabled (hasKey $seen .Values.siem.databaseUrlSecret.name) }}{{ fail "SIEM requires its own database secret" }}{{ end }}
 {{- end -}}

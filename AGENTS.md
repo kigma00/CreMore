@@ -25,7 +25,7 @@
 | 공급자 연결 화면 | 연결 마법사·목록은 onboarding descriptor로 콘솔이 그린다. 공급자에 꼭 필요한 화면·문구만 `web/console/views/integrations/`의 모듈(`guide.tsx` 설정 안내, `copy.ts` 문구, `aws-settings.tsx`·`github-app.tsx` 등)과 `web/tests/console-*.test.cjs` | `web/console/views/integrations/model.ts`(catalog 규칙·`FAMILIES`), 공개 응답/source 인식(`web/lib/source-types.ts`), `web/public/logos/`·`web/console/logo-set.ts` |
 | schema 2 메타데이터 수집 | `<vendor>/backend/cremore_<vendor>_provider/metadata/`의 adapter·descriptor·정규화·테스트; Azure Entra는 `entra/`, ARM은 `arm/` | `cremore/coverage/providers/__init__.py`, 공통 spec·record·runtime 계약 |
 | AWS schema 1 인벤토리 | `aws/backend/cremore_aws_provider/`의 IAM·CloudTrail·조직/Control Tower·STS 구성요소 결합, 콘솔의 AWS 설정·대상 화면(`web/console/views/integrations/aws-settings.tsx`·`aws-identity.tsx`·`reach.tsx`) | `cremore/coverage/`의 모델·저장·스케줄·상관분석, API·worker 연결 |
-| schema 1 금고 수집 | `vault/backend/cremore_vault_provider/`의 KV·관리 메타데이터, `aws/backend/cremore_aws_provider/`의 Secrets Manager·SSM, `gcp/backend/cremore_gcp_provider/coverage.py`의 Secret Manager | 기존 `ConnectionSpec`·`Observation`, 공통 해시·저장·상관분석 계약 |
+| schema 1 금고 수집 | `aws/backend/cremore_aws_provider/`의 Secrets Manager·SSM | 기존 `ConnectionSpec`·`Observation`, 공통 해시·저장·상관분석 계약 |
 | SIEM 연동 | 별도 출력 패키지와 자체 테스트; 공개 `cremore.siem`의 `SinkProvider`·`Sink`·`DeliveryError` 사용 | 설치형 entry point와 목적지 설정; 이벤트·발신 대기열 변경은 플랫폼 담당 |
 | 티켓 시스템(소유자 승인·노출 대응 요청) | 별도 어댑터 패키지와 자체 테스트; 공개 `cremore.ticketing.contract`의 `TicketSystemProvider`·`TicketError` 사용(내장 시스템은 없다. 기본 경로는 연락 발송의 Slack·메일 링크) | `cremore.ticket_systems` entry point와 `TICKET_SYSTEM_PLUGINS` 허용; 요청·응답 기록·분리 검사는 플랫폼의 `owner_approval`·`governance/response`([소유자 승인·대응 요청](docs/TICKET_SYSTEMS.md)) |
 | 공급자 자격증명 조치 | `<vendor>/backend/cremore_<vendor>_provider/remediation.py`의 참조·지원 조치·연결 범위·상태 읽기·쓰기와 테스트, onboarding의 `remediation` 용도 | `cremore/remediation/provider_actions.py`의 `MODULES`, 계획·승인·worker 실행 계약([공급자 자격증명 조치](docs/PROVIDER_ACTIONS.md)) |
@@ -38,18 +38,9 @@
 
 ## 실제 공급자 디렉터리
 
-최상위 소유자는 `aws/`, `gcp/`, `github/`, `gitlab/`, `notion/`, `atlassian/`, `azure/`, `vault/`, `okta/`, `keycloak/`, `slack/`, `website/`이다.
-`okta/`·`keycloak/`은 퇴사자 점검의 IdP 사용자 수집과, 연동 제안에 쓰는 IdP 앱 목록 수집(이름·상태만)만 소유한다. Google Workspace 디렉터리는 `gcp/`의 `workspace/`가 소유한다.
-`slack/`은 Enterprise Grid 앱 발급 목록만 소유하고 전용 UI가 없다.
-`website/`는 확인된 회사 도메인(`cremore/domains.py`)의 외부 노출 검사만 소유하고 전용 UI가 없다. 요청 경계(확인된 도메인·
-주소 규칙·연결 고정)는 이 폴더의 `fetch.py`·`addresses.py`에 있고, 다른 곳에서 사이트를 읽는 경로를 따로 만들지 않는다.
-Confluence·Bitbucket은 공유 구현을 가진 `atlassian/` 안에서 나눈다. OpenBao는 `vault/`의 KV 계약을 쓴다.
-Atlassian 묶음(`confluence`·`bitbucket`·`atlassian`)은 콘솔 `web/console/views/integrations/model.ts`의 `FAMILIES`가 연결 화면에서 함께 보여 주는 표시 묶음이다.
-기존 `confluence`·`bitbucket`의 source_type·job·scope·API 식별자를 `atlassian`으로 바꾸지 않는다.
+현재 공급자 구현은 `aws/`, `github/`, `notion/`, `slack/`에 둔다. GitHub·Notion·Slack은 schema 2 메타데이터를, AWS는 별도의 schema 1 수집을 사용한다. 수집 대상이 아닌 SaaS의 과거 DB 행은 보존하지만 실행 대상으로 등록하지 않는다.
 Python 구현과 공급자 전용 테스트는 `backend/cremore_<vendor>_provider/`에 둔다. 공급자 폴더에는 UI가 없다. 연결 화면은 onboarding descriptor로
 콘솔(`web/console/`)이 그리고, 공급자 고유 화면이 꼭 필요하면 콘솔의 `views/integrations/`에 둔다(2026-10-01 이전 대시보드와 `<vendor>/web/` 삭제).
-GCP의 플랫폼 독립 `gcp/standalone/cremore_gcp/`는 같은 wheel에 포함한다. 식별자·값 검증·매칭은
-이 패키지의 함수를 제품에서도 재사용하며 공통 함수를 복제하지 않는다. GCP·GitLab의 독립 CLI는 2026-09-27 삭제했다.
 공통 API·권한·DB·작업 수명·scope·SIEM은 `cremore/`, 공통 웹 화면·타입·UI는 루트 `web/` 소유다.
 공급자마다 서버·Docker·의존성 설치를 만들지 않는다. 한 제품에서 라이브러리 함수를 직접 호출한다.
 공급자의 원자적 설정 갱신은 `cremore.db.settings_store.locked_settings`를 사용한다. DB 테이블·SQL·
@@ -84,61 +75,19 @@ Python Docker COPY를 반영한다. 웹 빌드 설정은 바꾸지 않는다(연
 
 ### 발급 인벤토리·노출·금고의 근거
 
-발급 공급자와 콘텐츠 발견 위치는 별개다. GitLab에서 발견한 GCP 키를 GitLab 발급 자격증명으로
-분류하거나 콘텐츠 URL에서 발급 조직·tenant를 추정하지 않는다. `metadata_correlation.py`의 노출 연결과
-`issuer_coverage.py`의 발급 목록→금고 비교는 외부 인증 없는 근거 연결이며, 미노출 자격증명에 가짜 finding을 만들지 않는다.
-명시적 식별자, 호환되는 값 지문, 공급자 제공 digest, 연결 후보를 구별한다. 식별자 일치·provider 상태·
-마지막 사용·TTL은 값 일치나 현재 유효성·권한 검증을 대신하지 않는다. 비공개 digest는 공개 응답·export에 노출하지 않는다.
+실행 공급자는 GitHub·AWS·Notion·Slack 네 가지다. GitHub·Notion·Slack은 schema 2 메타데이터를,
+AWS는 schema 1 IAM·CloudTrail·Secrets Manager·SSM 수집을 사용한다. 과거 DB 행은 보존하지만
+제거한 공급자의 새 연결·수집·조치는 등록하지 않는다.
 
-`storage_receipts.py`의 발급·저장 이력은 관리자 제출 근거다. 실제 수집된 발급/금고 관측의
-run·batch·item 위치에 고정하며 수집기 토큰으로 등록하지 못한다. UUID 재제출은 멱등이고 철회해도
-이력을 보존한다. 범위 변경·중지·철회는 적용 불가로 표시하며 값 일치·현재 보관·활성 상태로 승격하지 않는다.
-공통 API/UI가 이력을 소비하고 공급자 모듈에 별도 receipt SQL/테이블을 만들지 않는다.
-Entra↔Key Vault의 `PUBLIC_CERTIFICATE_MATCH`는 실제 공개 DER의 SHA-256 동일성만 뜻한다.
-공급자 `public_certificates.certificate_evidence`를 재사용하고 임의 thumbprint를 대체 근거로 쓰지 않는다.
-공개 인증서 연결은 개인키 보관이나 인증 권한을 입증하지 않으며 비밀값 일치율에 포함하지 않는다.
-`PUBLIC_CERTIFICATE_NOT_OBSERVED`는 확인된 범위에서 선택한 Key Vault 인증서 조회가 모두 최신·완료이고
-같은 공개 DER이 없다는 뜻이며, 개인키가 다른 곳에 없다는 증거가 아니다.
-후속 공개 인증서 조회가 실패하면 이미 저장된 근거를 과거 관측으로 유지한다. 조회 SQL은
-`MetadataStore.latest_finished_observation`을 재사용하고 공급자나 비교 함수에 복제하지 않는다.
+발급 공급자와 콘텐츠 발견 위치는 별개다. 발견 위치만으로 발급 조직을 추정하지 않는다.
+`metadata_correlation.py`의 노출 연결과 `issuer_coverage.py`의 발급 목록→금고 비교는 외부 인증 없는
+근거 연결이다. 식별자 일치·공급자 상태·마지막 사용·TTL은 값 일치나 현재 유효성·권한 검증을 대신하지 않는다.
+비공개 digest는 공개 응답과 export에 노출하지 않는다.
 
-퇴사자 점검([docs/LEAVER_CHECK.md](docs/LEAVER_CHECK.md))의 IdP 수집기(`okta`·`entra_id`·`keycloak`·`google_workspace`·`github_identity`)는 공통
-`cremore/identity/idp.py` 위의 공급자 조회 함수이고 매칭에 쓰는 이메일·로그인은 keyed digest로만 저장한다. 사람 정보 보관
-(`options.keep_profiles`, 마법사의 `people_details`)을 켠 연결은 표시·연락용 이름·이메일·부서·직함을 사실로 함께 남기며
-`GET /api/v1/people`(analyst)이 이를 모은다. 매칭은 이 값을 쓰지 않는다. 사람이 회사 IdP로 로그인하는 팀 설치(`AUTH_MODE=oidc`)의
-사람 목록 연결은 그 로그인 IdP 자신이어야 한다(`cremore/onboarding/sign_in.py`, IdP 온보딩 모듈의 `sign_in_target`, GitHub 신원 연결 예외).
-Google 로그인은 토큰에 그룹이 없어 worker가 Workspace 역할 그룹 구성원을 digest로 읽고 API가 그것으로 역할을 정한다
-(`cremore/identity/sign_in_groups.py`, API는 자격증명을 열지 않는다). 공급자는 발급 목록 행의 소유
-계정을 `credential_owner(row)`로 알려 준다(registry의 `owners`, schema 1은 `V1_OWNERS`). 소유자 함수는 정확한 근거
-(`SAML_NAME_ID`·`SCIM_EXTERNAL_ID`·`EXTERNAL_UID`·`IDP_OBJECT_ID`·`VERIFIED_EMAIL`)와 후보(`PROVIDER_LOGIN`)를 구분해야 하며
-이름 유사성으로 연결하지 않는다. 폐기는 기존 조치 계획 승인으로만 한다: AWS 액세스 키, 그리고 발급 목록에 있는
-GCP 사용자 관리 서비스 계정 키, GitLab 토큰, Notion PAT, Azure DevOps PAT와 GitHub 세분화 PAT의 조직 접근
-([공급자 자격증명 조치](docs/PROVIDER_ACTIONS.md)). 다른 공급자의 조치는 worker만 그 전용 연결(`remediation` 용도)의
-자격증명을 열어 실행하며, API는 자격증명을 열지 않는다. 폐기가 자격증명이 아닌 조직 접근만 끝내면 모듈의 `REVOKES`로
-밝히고 화면·소유자 요청이 그 말로 적는다.
-
-현재 schema 2는 [Notion](notion/README.md)의 Enterprise PAT·MCP 연결 메타데이터,
-[Azure](azure/README.md)의 Key Vault·Entra·ARM·Azure DevOps PAT 목록, [GitHub](github/README.md)의 발급 목록·선택적 token digest·
-감사 로그 토큰 사용 요약·Actions secrets 메타데이터, [GCP](gcp/README.md)의 프로젝트 인벤토리와 조직/폴더 discovery,
-[Slack](slack/README.md)의 승인 앱별 봇·사용자 토큰·수신 웹훅 목록(선택적 감사 로그 설치 기록)을 각각의 계약으로 지원한다.
-GCP 인증은 Worker ADC·workload identity 외에 대시보드 Google OAuth(`auth_type=google_oauth`)도 쓴다. OAuth 앱 설정
-(`GCP_OAUTH_*` 또는 대시보드에 봉인 저장한 앱)은 API 서버 전용이고 Worker는 봉인 참조로 작업마다 토큰을 받으며 ADC로 대체하지 않는다.
-공급자가 공개하지 않는 token 값·전체 임시 세션 목록까지 수집한다고 가정하지 않는다. Discovery는 후속 범위 승인이 아니다.
-메타데이터 권한과 값 읽기 권한을 분리하며 값 읽기는 연결의 capability·옵션·승인 범위를 모두 검사한다.
-값 읽기 기능을 켤 때의 권한·운영 조건 합의안은 [값 읽기 정책(제안)](docs/SECRET_VALUE_READING_POLICY.md)을 따른다.
-GCP를 포함해 수집한 비밀 원문은 메모리에서만 처리한다. 가역 암호화·Base64 형태도 보관하지 않으며,
-HMAC 지문과 필요한 메타데이터만 남긴다. 공급자 연결에 쓰는 인증 자격증명의 봉인 저장은 별도 계약이다.
-
-[Vault/OpenBao](vault/README.md)의 KV 값·선택적 KV2 이력과 [AWS Secrets Manager](aws/README.md)의
-현재·선택적 과거 버전은 schema 1 금고 계약이다. Vault token accessor·lease의 `MANAGED` 메타데이터는
-KV의 `VALUE` 일치나 외부 공급자의 발급 근거가 아니다. 과거 일치·부분 수집·권한 거절·미지원 목록은
-현재 금고 보관이나 부재로 단정하지 않는다. API가 제공한 최신/이전 버전 근거와 불확실성을 보존한다.
-목록 밖 금고는 `external_vault`(JSON Lines·`cremore.vault_readers` 플러그인)로 대조하며, 부재 판정의 근거 수준
-(`API_LISTING`·`READER_REPORTED`·`OPERATOR_DECLARED`)을 섞지 않는다. 다른 Vault 클러스터의 서버 읽기는 연결 자신의
-로그인만 쓰고 설치의 비밀 저장소 신원을 쓰지 않는다([범용 금고](docs/EXTERNAL_VAULT.md)).
-공식 API·권한·제품별 제약은 [기술 가능성 근거](docs/PROVIDER_CREDENTIAL_FEASIBILITY.md),
-진행 상태와 실제 검증 범위는 [공급자 인벤토리 구현 기록](docs/PROVIDER_INVENTORY_IMPLEMENTATION.md)을 확인한다.
-문서에 계약이 있다는 사실을 전체 공급자 지원·실환경 검증 완료로 보고하지 않는다.
+퇴사자 점검은 GitHub 신원 및 허용한 공급자가 제공하는 소유자 근거만 사용한다. 매칭에 쓰는 이메일과
+로그인은 keyed digest로 저장한다. 폐기는 기존 조치 계획 승인으로만 한다. 설치 비밀 저장소의
+Vault/OpenBao 코드는 연결 자격증명 보관 인프라이며 Vault 수집 공급자를 뜻하지 않는다.
+`storage_receipts.py`의 제출 근거는 수집된 run·batch·item에 고정하고 값 일치로 승격하지 않는다.
 
 ### AWS schema 1 인벤토리
 

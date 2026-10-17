@@ -5,5 +5,4 @@
  * pure models may import it. Keep it equal to the backend registry's SOURCE_TYPES, so a backend source is added here
  * in the same change.
  */
-export const CONTENT_SOURCE_TYPES = ["s3", "github", "notion", "gitlab", "gcp", "confluence", "bitbucket", "azure_blob", "azure_devops",
-  "website"] as const;
+export const CONTENT_SOURCE_TYPES = ["s3", "github", "notion"] as const;

@@ -9,9 +9,8 @@ to the repository or served by the API.
 
 from __future__ import annotations
 
-from cremore_vault_provider.secretstore import SecretStoreError, VaultKV, kv_path
-
 from cremore.secretstore.sealed import SealedSecretError, is_sealed, unseal
+from cremore.secretstore.vault import SecretStoreError, VaultKV, kv_path
 from cremore.sources.registry import TOKEN_KINDS
 
 _SCHEME = "vault://"
@@ -78,9 +77,6 @@ def inject_secret(
     """
 
     ref = payload.get("secret_ref")
-    gcp = kind == "gcp" or payload.get("provider") == "gcp" or payload.get("source_type") == "gcp"
-    if ref and gcp and resolver is None and not payload.get("token"):
-        raise SecretRefError("GCP_OAUTH_STORED_AUTH_UNAVAILABLE")
     if not ref or resolver is None or payload.get("token"):
         return payload
     if kind not in TOKEN_KINDS:
@@ -102,29 +98,6 @@ def inject_secret(
         data.get("GITHUB_APP_PRIVATE_KEY_BASE64"),
     )
     token = None
-    if data.get("auth_kind") == "azure_certificate":
-        from cremore_azure_provider.app_certificate import CertificateError, content_token
-
-        try:
-            token = content_token(payload.get("provider") or payload.get("source_type") or kind, data)
-        except CertificateError as exc:
-            raise SecretRefError(exc.code) from None
-    if data.get("auth_kind") == "atlassian_oauth":
-        from cremore_atlassian_provider.cloud_api import CloudError
-        from cremore_atlassian_provider.cloud_api import content_token as atlassian_token
-
-        try:
-            token = atlassian_token(payload.get("provider") or payload.get("source_type") or kind, data)
-        except CloudError as exc:
-            raise SecretRefError(exc.code) from None
-    if gcp and data.get("auth_kind") == "google_oauth":
-        from cremore_gcp_provider.gcp_auth import GcpAuthError
-        from cremore_gcp_provider.oauth import oauth_token
-
-        try:
-            token = oauth_token(data, **({"client_factory": http_client_factory} if http_client_factory else {}))
-        except GcpAuthError as exc:
-            raise SecretRefError(exc.code) from None
     if github and all(app_fields):
         if github_client_factory is None:
             raise SecretRefError("GitHub App authentication has no HTTP client")

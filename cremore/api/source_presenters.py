@@ -75,7 +75,7 @@ def present_connection(c) -> dict:
         # operator-managed secret supply; S3 uses the scanner's own identity.
         "credential_source": "GITHUB_APP" if (c.config or {}).get("auth_kind") == "GITHUB_APP"
         else "CREMORE_ENCRYPTED" if is_sealed(c.secret_ref)
-        else "OPERATOR_MOUNTED_ENV" if c.secret_ref or c.provider in ("gcp", "azure_blob") else "NONE",
+        else "OPERATOR_MOUNTED_ENV" if c.secret_ref else "NONE",
         "credential_ref": "",
         "credential": {
             "status": "REVOKED" if evidence.get("revoked_at") else

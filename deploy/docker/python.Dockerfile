@@ -14,20 +14,10 @@ WORKDIR /app
 COPY pyproject.toml README.md requirements.txt requirements-build.txt ./
 COPY cremore ./cremore
 COPY aws/backend ./aws/backend
-COPY gcp/backend ./gcp/backend
-COPY gcp/standalone/cremore_gcp ./gcp/standalone/cremore_gcp
 COPY github/backend ./github/backend
-COPY gitlab/backend ./gitlab/backend
 COPY notion/backend ./notion/backend
-COPY atlassian/backend ./atlassian/backend
-COPY azure/backend ./azure/backend
-COPY vault/backend ./vault/backend
-COPY okta/backend ./okta/backend
-COPY keycloak/backend ./keycloak/backend
 COPY slack/backend ./slack/backend
-COPY website/backend ./website/backend
 COPY packages/cremore-siem-slack ./packages/cremore-siem-slack
-COPY packages/cremore-ticket-jira ./packages/cremore-ticket-jira
 # Every package comes from a hash-pinned lock file, the build backend included,
 # so a rebuild installs the exact artifacts that were audited. The wheel is
 # built in a throwaway venv; the runtime venv gets only the locked dependencies
@@ -36,7 +26,6 @@ RUN python -m venv /tmp/build \
     && /tmp/build/bin/pip install --require-hashes -r requirements-build.txt \
     && /tmp/build/bin/pip wheel --no-deps --no-build-isolation -w /tmp/dist . \
     && /tmp/build/bin/pip wheel --no-deps --no-build-isolation -w /tmp/dist ./packages/cremore-siem-slack \
-    && /tmp/build/bin/pip wheel --no-deps --no-build-isolation -w /tmp/dist ./packages/cremore-ticket-jira \
     && python -m venv /app/venv \
     && /app/venv/bin/pip install --require-hashes --only-binary :all: -r requirements.txt \
     && /app/venv/bin/pip install --no-deps /tmp/dist/*.whl \

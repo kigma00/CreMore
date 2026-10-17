@@ -112,23 +112,16 @@ def create(repo, settings, body, actor):
     intent = body.get("credential_purpose", "collector")
     if intent not in {"collector", "remediator"} or (intent == "remediator" and "remediation" not in method["purposes"]):
         raise service.OnboardingError("CREDENTIAL_PURPOSE_INVALID")
-    refs, generated = service._credential(settings, descriptor["provider"], method, body.get("credential"), context,
-                                         purposes=["remediation"] if intent == "remediator" else [])
+    refs = service._credential(settings, descriptor["provider"], method, body.get("credential"), context,
+                               purposes=["remediation"] if intent == "remediator" else [])
     context.update({"auth": service._public_fields(method, body.get("credential"))})
-    if generated:
-        context["generated"] = generated
     binding = _binding(body.get("browser_key"))
     with atomic(repo) as bound:
         row = SessionStore(bound).create(actor, binding,
             {"provider": descriptor["provider"], "edition": edition, "auth_method": method["id"], "target": context,
              "secret_refs": refs, "credential_purpose": intent,
              "purposes": [], "plans": {}, "state": "NEW"}, _now() + TTL)
-        if generated:
-            row = SessionStore(bound).save(row, {**row["data"], "state": "SETUP_REQUIRED"})
-        elif method.get("flow") == "gcp_oauth":
-            row = SessionStore(bound).save(row, {**row["data"], "state": "AWAITING_OAUTH"})
-        else:
-            row = _queue(bound, row, "authenticate")
+        row = _queue(bound, row, "authenticate")
         _audit(bound, row, "ONBOARDING_AUTHENTICATION_REQUESTED")
     return public(row)
 
@@ -351,7 +344,7 @@ def select(repo, sid, body, actor):
         if body.get("snapshot_id") != row["data"].get("snapshot_id"):
             raise service.OnboardingError("ONBOARDING_SNAPSHOT_CHANGED", 409)
         roots = body.get("selected_roots", [
-            {"resource_id": i, "all_current_objects": known[i]["resource_type"] in {"S3_BUCKET", "GCS_BUCKET", "AZURE_BLOB_CONTAINER"},
+            {"resource_id": i, "all_current_objects": known[i]["resource_type"] in {"S3_BUCKET"},
              **({"page_mode": "PAGE_ONLY"} if known[i]["resource_type"] == "NOTION_PAGE" else {})} for i in ids])
         roots = scope.validate_profile_input({"name": "Onboarding", "change_reason": "ONBOARDING_SELECTION",
             "budgets": {"bytes": 104857600, "requests": 1000, "seconds": 600}, "selected_roots": roots})["selected_roots"]

@@ -41,22 +41,8 @@ def cross_host_effective(settings, repo) -> bool:
     return bool(settings.cross_host_verification_allowed) and cross_host_switch(repo)["enabled"]
 
 
-def _self_managed_gitlab_hosts(repo) -> tuple[str, ...]:
-    """Hosts of GitLab instances registered as content or inventory connections."""
-    from urllib.parse import urlsplit
-
-    from cremore.coverage.store import CoverageStore
-    urls = [(c.config or {}).get("base_url", "https://gitlab.com")
-            for c in repo.list_connections() if c.provider == "gitlab"]
-    urls += [row["spec"].get("origin", "") for row in CoverageStore(repo).list_connections()
-             if row["spec"].get("provider") == "gitlab"]
-    hosts = {(urlsplit(url).hostname or "").lower() for url in urls if isinstance(url, str)}
-    return tuple(sorted(hosts - {"", "gitlab.com"}))
-
-
 def verify_config_for(base, settings, repo):
     """A per-scan copy of ``base`` (a VerifierConfig) reflecting the live switches."""
     return replace(base, probe_capabilities=probe_effective(settings, repo),
                    cross_host=cross_host_effective(settings, repo),
-                   known_github_hosts=tuple(settings.known_github_hosts),
-                   known_gitlab_hosts=_self_managed_gitlab_hosts(repo))
+                   known_github_hosts=tuple(settings.known_github_hosts))
