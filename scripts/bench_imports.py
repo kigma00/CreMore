@@ -38,7 +38,7 @@ TARGETS = (
     # platform contracts, registries and entry points
     "cremore.coverage.metadata_models", "cremore.coverage.collector_runtime",
     "cremore.coverage.providers", "cremore.sources.registry", "cremore.worker.worker",
-    "cremore.api.app",
+    "cremore.main",
 )
 
 PROBE = r"""
