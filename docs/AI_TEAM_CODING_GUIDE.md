@@ -1,5 +1,9 @@
 # CreMore 팀 AI 코딩 지침
 
+# 현재 지원 범위 (2026-10-16)
+
+현재 공급자 구현과 온보딩 대상은 GitHub, AWS, Notion, Slack이다. 아래에 남아 있는 다른 공급자 설명은 당시 설계와 구현 기록이며 현재 등록·실행 계약으로 사용하지 않는다. 공급자 등록은 `cremore/onboarding/catalog.py`, 콘텐츠 소스는 `cremore/sources/registry.py`, 메타데이터 어댑터는 `cremore/coverage/providers/__init__.py`를 기준으로 확인한다.
+
 코드 대조 기준: 2026-09-25, `refactoring`의 `2243dfb`. 이 문서는 신규 세션에서도 사용할 수 있는 개발 지침이다.
 팀 공통 진입 지침은 루트 [AGENTS.md](../AGENTS.md)다. 새 AI 세션에는 두 문서를 같은 저장소
 버전으로 제공하고 담당 공급자·목표·수정 범위를 함께 지정한다. 하위 `AGENTS.md`도 해당 영역에 적용한다.

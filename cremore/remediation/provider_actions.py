@@ -43,9 +43,7 @@ ACTIONS = ("DISABLE_PROVIDER_CREDENTIAL", "REVOKE_PROVIDER_CREDENTIAL")
 STATES = ("ACTIVE", "DISABLED", "EXPIRED", "REVOKED", "ABSENT")
 # What a read-back must show for the write to count as done (a revoked credential some providers keep, others drop).
 WANTED = {"DISABLE_PROVIDER_CREDENTIAL": ("DISABLED",), "REVOKE_PROVIDER_CREDENTIAL": ("REVOKED", "ABSENT")}
-MODULES = {"gcp": "cremore_gcp_provider.remediation", "gitlab": "cremore_gitlab_provider.remediation",
-           "notion": "cremore_notion_provider.remediation", "github": "cremore_github_provider.remediation",
-           "azure_devops": "cremore_azure_provider.devops_tokens.remediation"}
+MODULES = {"notion": "cremore_notion_provider.remediation", "github": "cremore_github_provider.remediation"}
 # ORGANIZATION_ACCESS: an organization's grant to the credential (a GitHub fine-grained token keeps working elsewhere).
 REVOKES_WHAT = ("ORGANIZATION_ACCESS",)
 _NAMESPACE = uuid.UUID("5a0f3c2e-7d51-4c1b-9f0e-2b6a8d4e1c73")

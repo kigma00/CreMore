@@ -77,14 +77,6 @@ def register(ctx) -> None:
     def list_provider_connections(_actor: str = Depends(require_auth)) -> list[dict]:
         return [_flagged(view) for view in service.list_views(repo)]
 
-    @app.get("/api/v1/provider-connections/suggestions")
-    def provider_suggestions(_actor: str = Depends(require_role("admin"))) -> dict:
-        """Services the company's IdP already lists that no connection covers yet (a hint, from stored inventory)."""
-        from cremore.onboarding.store import ProviderConnectionStore
-        from cremore.onboarding.suggestions import suggestions
-
-        return {"items": suggestions(repo, ProviderConnectionStore(repo).list())}
-
     @app.post("/api/v1/provider-connections", status_code=201)
     def create_provider_connection(body: dict, response: Response, actor: str = Depends(require_role("admin"))) -> dict:
         """Steps 1 and 2: provider, edition, purposes, auth method, target and credential."""

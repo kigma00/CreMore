@@ -8,24 +8,16 @@ from cremore.coverage.models import SCHEME
 
 
 def issuance_rows(repo, contract, current, historical, blockers, *, key_id, now,
-                  exposed_values, exposed_digests, exposed_identifiers, limit):
+                  exposed_values, exposed_digests, limit):
     store = MetadataStore(repo)
     page = store.inventory(object_kind="credential", purpose="issuer_inventory", limit=max(0, limit))
     connections = {row["id"]: row for row in store.list_connections()}
-    value_index, digest_index, identifier_index = {}, {}, {}
+    value_index, digest_index = {}, {}
     for item in current + historical:
         if item["evidence"] == "VALUE":
             value_index.setdefault((item["credential_type"], item["fingerprint"]), []).append(item)
             if item.get("provider_digest"):
                 digest_index.setdefault(item["provider_digest"], []).append(item)
-            if item.get("issuer_identifier"):
-                identifier_index.setdefault(item["issuer_identifier"], []).append(item)
-    # A current service-account key whose key ID is missing or ambiguous could be
-    # any issued key, so no key ID absence can be asserted against that scope.
-    unidentified_keys = any(item["evidence"] == "VALUE" and item["credential_type"] == "GCP_SERVICE_ACCOUNT"
-                            and not item.get("issuer_identifier") for item in current)
-    # Exact positive evidence from unidentified observations remains reachable,
-    # but must never become another uniquely issued credential or absence claim.
     snapshots = store.snapshot_matches(digest_index, limit=max(0, limit - len(page["items"])))
     snapshot_ids = {entity["id"] for entity in snapshots["items"]}
 
@@ -62,10 +54,6 @@ def issuance_rows(repo, contract, current, historical, blockers, *, key_id, now,
             linked = value_index.get(value_key, []) + value_index.get(("OPAQUE_VALUE", match["fingerprint"]), [])
             basis, compared = "VALUE_FINGERPRINT", True
             exposed = value_key in exposed_values
-        elif entity["provider"] == "gcp" and identifier.startswith("serviceAccountKey:"):
-            linked = identifier_index.get(identifier, [])
-            credential_type, basis, compared = "GCP_SERVICE_ACCOUNT", "IDENTIFIER", True
-            exposed = identifier in exposed_identifiers
         else:
             reasons.add("ISSUER_COMPARISON_EVIDENCE_UNAVAILABLE")
             if match and not compatible:
@@ -80,8 +68,6 @@ def issuance_rows(repo, contract, current, historical, blockers, *, key_id, now,
         state = ("IDENTIFIER_ONLY" if basis == "IDENTIFIER" else "MATCHED") if present else "UNKNOWN"
         if not present:
             reasons.update(blockers)
-            if basis == "IDENTIFIER" and unidentified_keys:
-                reasons.add("VAULT_SERVICE_ACCOUNT_KEY_UNIDENTIFIED")
             if not snapshot and not reasons and fresh and compared:
                 # Like an AWS key ID, a key ID only shows what the vault did not name.
                 state = "IDENTIFIER_NOT_OBSERVED" if basis == "IDENTIFIER" else "NO_VAULT_MATCH"
@@ -101,10 +87,4 @@ def issuance_rows(repo, contract, current, historical, blockers, *, key_id, now,
                      "match_basis": basis if linked else "NONE", "reasons": sorted(reasons),
                      "locations": [{**public(item), "match_basis": basis} for item in present],
                      "history": [{**public(item), "match_basis": basis} for item in history]})
-    from cremore.coverage.certificate_coverage import certificate_rows
-
-    certificates, truncated = certificate_rows(store, connections, now=now,
-                                                limit=max(0, limit - len(page["items"]) - len(snapshots["items"])),
-                                                scope_confirmed="VAULT_SCOPE_NOT_CONFIRMED" not in blockers)
-    rows.extend(certificates)
-    return rows, truncated or snapshots["truncated"] or page["total"] > len(page["items"])
+    return rows, snapshots["truncated"] or page["total"] > len(page["items"])

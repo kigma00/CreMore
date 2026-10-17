@@ -29,12 +29,9 @@ from pydantic import (
 from cremore.coverage.models import MAX_BATCH, SCHEME, Code, Digest, StrictModel, digest
 from cremore.task_state import safe_task_state
 
-# okta, keycloak, entra_id and google_workspace list people and their status (identity_status);
-# github_identity lists which GitHub login each SAML/SCIM identity belongs to. They keep identity
-# values only as keyed digests (cremore.identity.keys), never the emails or logins themselves.
-Provider = Literal["gitlab", "gcp", "github", "atlassian", "bitbucket", "slack", "azure_key_vault", "azure_entra", "azure_resource_manager", "notion", "azure_devops", "okta", "keycloak", "entra_id", "github_identity", "google_workspace"]
+Provider = Literal["github", "github_identity", "notion", "slack"]
 Purpose = Literal["issuer_inventory", "vault_metadata", "usage", "identity_status"]
-Capability = Literal["inventory", "audit", "relations", "vault_metadata", "vault_value", "issuer_value", "issuer_digest", "policy", "public_keys", "identity_status"]
+Capability = Literal["inventory", "audit", "relations", "vault_metadata", "issuer_digest", "policy", "public_keys", "identity_status"]
 IdentityKeyKind = Literal["IDP_USER_ID", "LOGIN", "EMAIL", "SCIM_EXTERNAL_ID", "SAML_NAME_ID", "EXTERNAL_UID", "IDP_OBJECT_ID", "VERIFIED_EMAIL", "UNVERIFIED_EMAIL", "PROVIDER_LOGIN"]
 FingerprintScheme = Literal["cremore-credential-fingerprint-v1/hmac-sha256", "github-token-sha256/hmac-sha256-v1"]
 ObjectKind = Literal["credential", "principal", "installation", "policy", "request", "context", "public_key", "trust", "vault_item", "vault_version", "runner", "resource", "unknown"]
@@ -90,18 +87,10 @@ class MetadataScope(MetadataModel):
 
 
 class MetadataOptions(MetadataModel):
-    mode: Literal["inventory", "discovery", "accounts", "bitbucket", "runners", "branch_restrictions", "organization", "enterprise", "project", "workspace"] = "inventory"
+    mode: Literal["inventory", "organization", "enterprise"] = "inventory"
     sources: list[str] = Field(default_factory=list, max_length=100)
     api_path: str = Field(default="", max_length=512, pattern=r"^(?:/[A-Za-z0-9_-]+)*$")
-    azure_storage_accounts: list[str] = Field(default_factory=list, max_length=1000)
     include_provider_hashes: bool = False
-    include_account_reads: bool = True
-    include_self_pat: bool = True
-    include_enterprise_pat: bool = False
-    include_resource_access_tokens: bool = True
-    include_service_accounts: bool = True
-    include_graphql: bool = True
-    enrich_users: bool = True
     # IdP collections: keep each person's display name, email, department and title as facts, for owner,
     # contact and access views. Matching (the departed-owner check) still uses keyed digests only.
     keep_profiles: bool = False
@@ -110,7 +99,6 @@ class MetadataOptions(MetadataModel):
     audit_lookback_days: int | None = Field(default=None, ge=1, le=36500)
     locations: list[str] = Field(default_factory=list, max_length=100)
     include_deleted: bool = False
-    include_values: bool = False
     include_actions: bool = False
     # GitHub only: Actions runs over their own window (None keeps the audit
     # window), which audit logs to read, an Enterprise read without its
@@ -133,20 +121,6 @@ class MetadataOptions(MetadataModel):
 
     _audit_time = field_validator("audit_created_after")(timestamp)
 
-    @field_validator("azure_storage_accounts")
-    @classmethod
-    def storage_accounts(cls, values):
-        for value in values:
-            metadata_text(value)
-            # Azure resource group names allow Unicode letters and digits (azure arm/transport.py RESOURCE_GROUP).
-            if not re.fullmatch(r"/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[\w.()-]{1,90}"
-                                r"/providers/Microsoft\.Storage/storageAccounts/[a-z0-9]{3,24}", value):
-                raise ValueError("INVALID_AZURE_STORAGE_ACCOUNT")
-            uuid.UUID(value.split("/")[2])
-        if len({value.casefold() for value in values}) != len(values):
-            raise ValueError("DUPLICATE_AZURE_STORAGE_ACCOUNT")
-        return values
-
     @field_validator("sources", "locations")
     @classmethod
     def names(cls, values):
@@ -165,8 +139,7 @@ class MetadataConnectionSpec(MetadataModel):
     tenant_confirmed: bool = False
     scopes: list[MetadataScope] = Field(min_length=1, max_length=1000)
     capabilities: list[Capability] = Field(min_length=1, max_length=8)
-    # oauth_client: client credentials with a client secret; private_key_jwt: signed with a key (RFC 7523).
-    auth_type: Literal["bearer", "token", "basic", "github_app", "adc", "workload_identity", "google_oauth", "oauth_client", "private_key_jwt"] = "bearer"
+    auth_type: Literal["bearer", "github_app"] = "bearer"
     secret_refs: dict[Literal["token", "username", "password", "app_id", "installation_id", "private_key", "client_id", "client_secret", "tenant_id", "bot_token", "app_token", "signing_secret", "admin_token", "audit_token", "refresh_token", "configuration_token"], str] = Field(default_factory=dict, max_length=16)
     principal_pin: str | None = Field(default=None, min_length=1, max_length=512)
     options: MetadataOptions = Field(default_factory=MetadataOptions)
@@ -178,18 +151,6 @@ class MetadataConnectionSpec(MetadataModel):
 
     _origin = field_validator("origin")(canonical_origin)
     _labels = field_validator("name", "tenant")(metadata_text)
-
-    @model_validator(mode="before")
-    @classmethod
-    def discard_legacy_value_storage(cls, value):
-        # Old snapshots of every provider serialized False; GCP also allowed True.
-        # Consume the retired option only at this stored-spec compatibility boundary.
-        if isinstance(value, dict) and isinstance(value.get("options"), dict) and "store_values" in value["options"]:
-            legacy = value["options"]["store_values"]
-            if type(legacy) is not bool or legacy and value.get("provider") != "gcp":
-                raise ValueError("GCP_VALUE_COLLECTION_REQUIRED")
-            return {**value, "options": {k: v for k, v in value["options"].items() if k != "store_values"}}
-        return value
 
     @field_validator("principal_pin")
     @classmethod
@@ -224,19 +185,10 @@ class MetadataConnectionSpec(MetadataModel):
             raise ValueError("NAME_OR_CONFIRMED_TENANT_REQUIRED")
         if len({(s.kind, s.id) for s in self.scopes}) != len(self.scopes) or len(set(self.capabilities)) != len(self.capabilities):
             raise ValueError("DUPLICATE_METADATA_SCOPE_OR_CAPABILITY")
-        if self.options.include_values and not set(self.capabilities) & {"vault_value", "issuer_value"}:
-            raise ValueError("VALUE_CAPABILITY_REQUIRED")
-        if "vault_value" in self.capabilities and (self.provider not in {"gcp", "azure_key_vault", "gitlab"}
-                                                   or "vault_metadata" not in self.capabilities):
-            raise ValueError("VAULT_VALUE_CAPABILITY_NOT_SUPPORTED")
-        if "issuer_value" in self.capabilities and self.provider not in {"gcp", "azure_resource_manager"}:
-            raise ValueError("ISSUER_VALUE_CAPABILITY_NOT_SUPPORTED")
         if "issuer_digest" in self.capabilities and (self.provider != "github" or "inventory" not in self.capabilities):
             raise ValueError("ISSUER_DIGEST_CAPABILITY_NOT_SUPPORTED")
         if self.options.include_provider_hashes and "issuer_digest" not in self.capabilities:
             raise ValueError("ISSUER_DIGEST_CAPABILITY_REQUIRED")
-        if self.options.azure_storage_accounts and self.provider != "azure_resource_manager":
-            raise ValueError("AZURE_STORAGE_ACCOUNTS_NOT_SUPPORTED")
         if self.provider != "github" and (self.options.actions_run_days is not None
                                           or self.options.audit_scope != "both" or self.options.enterprise_only
                                           or not self.options.github_inventory
@@ -474,7 +426,6 @@ class MetadataValueMatch(MetadataModel):
     fingerprint: Digest | None = None
     provider_digest: Digest | None = None
     session_fingerprint: Digest | None = None
-    issuer_identifier: str = Field(default="", max_length=512)
     identifier: str = Field(default="", max_length=512)
     scheme: FingerprintScheme = SCHEME
     key_id: Digest
@@ -483,8 +434,6 @@ class MetadataValueMatch(MetadataModel):
     policy_digest: Digest
     read_at: str = Field(max_length=40)
     reason: Code | None = None
-    # Private: fingerprints of discovered Azure SAS this storage key was shown to sign.
-    signed_fingerprints: list[Digest] = Field(default_factory=list, max_length=1000)
 
     _labels = field_validator("reference", "version", "identifier")(metadata_text)
     _time = field_validator("read_at")(timestamp)
@@ -494,16 +443,8 @@ class MetadataValueMatch(MetadataModel):
         if self.session_fingerprint is not None and (self.evidence != "VALUE" or self.credential_type != "AWS_ACCESS_KEY"
                                                     or not re.fullmatch(r"ASIA[A-Z0-9]{16}", self.identifier)):
             raise ValueError("SESSION_VALUE_EVIDENCE_REQUIRED")
-        if self.issuer_identifier:
-            metadata_text(self.issuer_identifier)
-            from cremore_gcp.linkage import is_service_account_key_identifier
-            if (self.evidence != "VALUE" or self.credential_type != "GCP_SERVICE_ACCOUNT"
-                    or not is_service_account_key_identifier(self.issuer_identifier)):
-                raise ValueError("GCP_SERVICE_ACCOUNT_IDENTIFIER_REQUIRED")
         if self.provider_digest is not None and (self.evidence != "VALUE" or self.credential_type != "GITHUB_TOKEN"):
             raise ValueError("GITHUB_VALUE_DIGEST_REQUIRED")
-        if self.signed_fingerprints and (self.evidence != "VALUE" or self.credential_type != "AZURE_STORAGE_KEY"):
-            raise ValueError("STORAGE_KEY_VALUE_EVIDENCE_REQUIRED")
         if (self.evidence in {"VALUE", "PROVIDER_DIGEST"}) != (self.fingerprint is not None):
             raise ValueError("VALUE_FINGERPRINT_REQUIRED")
         if (self.evidence == "PROVIDER_DIGEST") != (self.scheme == "github-token-sha256/hmac-sha256-v1"):
@@ -553,13 +494,6 @@ class IdentityKey(MetadataModel):
     digest: Digest
 
 
-class MetadataPayloadDigest(MetadataModel):
-    """Private equality evidence for all GCP payload bytes, including empty/binary values."""
-    scheme: Literal["cremore-gcp-payload-v1/hmac-sha256"] = "cremore-gcp-payload-v1/hmac-sha256"
-    key_id: Digest
-    fingerprint: Digest
-
-
 class EntityObservation(MetadataRecordBase):
     record_type: Literal["entity_observation"] = "entity_observation"
     identity: EntityIdentity
@@ -569,7 +503,6 @@ class EntityObservation(MetadataRecordBase):
     state_basis: Literal["PROVIDER_REPORTED", "OBSERVED", "UNKNOWN"] = "UNKNOWN"
     effective_at: str | None = Field(default=None, max_length=40)
     value_match: MetadataValueMatch | None = None
-    payload_digest: MetadataPayloadDigest | None = None
     # Private: keyed digests that link a person or account (cremore.identity.keys).
     identity_keys: list[IdentityKey] = Field(default_factory=list, max_length=16)
     identity_key_id: Digest | None = None
@@ -579,10 +512,6 @@ class EntityObservation(MetadataRecordBase):
 
     @model_validator(mode="after")
     def identity_digests(self):
-        if self.payload_digest is not None and (
-                self.identity.provider != "gcp" or self.value_match is None
-                or self.payload_digest.key_id != self.value_match.key_id):
-            raise ValueError("GCP_PAYLOAD_VALUE_EVIDENCE_REQUIRED")
         if (self.identity_keys or self.identity_key_id) and (
                 self.purpose != "identity_status" or self.identity.kind != "principal"
                 or not self.identity_keys or self.identity_key_id is None):
@@ -809,10 +738,6 @@ def in_metadata_scope(spec: MetadataConnectionSpec, item: MetadataRecord) -> boo
                   else "identity_status" if item.purpose == "identity_status" else "inventory")
     if capability not in spec.capabilities:
         return False
-    if isinstance(item, EntityObservation) and item.payload_digest is not None and (
-            spec.provider != "gcp" or item.value_match is None
-            or item.payload_digest.key_id != item.value_match.key_id):
-        return False
     if isinstance(item, ProviderEvent) and item.value_match is not None:
         # GitHub's audit hash of the token behind an activity summary, or of the
         # managed token an SSO authorization entry names, keyed for the
@@ -832,51 +757,11 @@ def in_metadata_scope(spec: MetadataConnectionSpec, item: MetadataRecord) -> boo
                     and spec.options.include_provider_hashes and "issuer_digest" in spec.capabilities
                     and match.material_kind == "credential" and match.reference == item.identity.object_id
                     and not match.version and match.version_state == "UNKNOWN")
-        vault = item.purpose == "vault_metadata"
-        if not spec.options.include_values or ("vault_value" if vault else "issuer_value") not in spec.capabilities:
-            return False
-        if spec.provider == "azure_key_vault":
-            if not vault or item.identity.kind not in ("vault_item", "vault_version") or item.scope.kind != "vault":
-                return False
-            if not re.fullmatch(re.escape(spec.origin) + r"/secrets/[A-Za-z0-9-]{1,127}(?:/[A-Za-z0-9]{1,64})?", match.reference):
-                return False
-        elif spec.provider == "azure_resource_manager":
-            if (vault or item.identity.kind != "credential" or item.scope.kind != "subscription"
-                    or spec.origin != "https://management.azure.com" or not spec.tenant_confirmed):
-                return False
-            if not any(match.reference.casefold() in {(account + "/keys/key1").casefold(), (account + "/keys/key2").casefold()}
-                       and account.split("/")[2].casefold() == item.scope.id.casefold()
-                       for account in spec.options.azure_storage_accounts):
-                return False
-        elif spec.provider == "gitlab":
-            if (not vault or item.identity.kind != "vault_item" or item.scope.kind not in {"group", "project"}
-                    or "ci_variables" not in spec.options.sources
-                    or match.reference != item.identity.object_id or match.version
-                    or match.version_state != "CURRENT"
-                    or not match.reference.startswith(("groups/" if item.scope.kind == "group" else "projects/") + item.scope.id + "/variables/")
-                    or not re.fullmatch(r"(?:groups|projects)/[1-9][0-9]*/variables/[a-f0-9]{64}", match.reference)):
-                return False
-        elif spec.provider != "gcp":
-            return False
-        elif vault:
-            if item.identity.kind not in ("vault_item", "vault_version") or item.scope.kind != "project":
-                return False
-            if not re.fullmatch(r"projects/" + re.escape(item.scope.id) + r"/(?:locations/[A-Za-z0-9-]+/)?secrets/[A-Za-z0-9_-]+(?:/versions/[A-Za-z0-9_-]+)?", match.reference):
-                return False
-        elif (item.identity.kind != "credential" or item.scope.kind != "project"
-              or not re.fullmatch(r"projects/" + re.escape(item.scope.id) + r"/locations/global/keys/[A-Za-z0-9_-]+", match.reference)):
-            return False
+        return False
     if isinstance(item, OperationReport) and (item.value_access != "NOT_REQUESTED" or item.value_contract is not None):
         if item.value_contract is not None and item.value_contract.scheme == "github-token-sha256/hmac-sha256-v1":
             return (spec.provider == "github" and item.purpose == "issuer_inventory"
                     and item.scope.kind == "enterprise" and spec.options.include_provider_hashes
                     and "issuer_digest" in spec.capabilities and item.value_contract.material_kind == "credential")
-        needed = "vault_value" if item.purpose == "vault_metadata" else "issuer_value"
-        supported = (spec.provider == "gcp" or spec.provider == "azure_key_vault" and needed == "vault_value"
-                     or spec.provider == "gitlab" and needed == "vault_value"
-                     and item.scope.kind in {"group", "project"} and "ci_variables" in spec.options.sources
-                     or spec.provider == "azure_resource_manager" and needed == "issuer_value"
-                     and item.scope.kind == "subscription" and bool(spec.options.azure_storage_accounts))
-        if not supported or not spec.options.include_values or needed not in spec.capabilities or item.value_contract is None:
-            return False
+        return False
     return True

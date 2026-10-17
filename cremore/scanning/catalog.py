@@ -35,12 +35,6 @@ def list_resources(payload: dict, *, s3_client: Callable[[], object] | None = No
         http_client=http_client, now=now, request_budget=request_budget)
 
 
-def _enterprise(payload, kind, cid, client, now, request_budget):
-    from cremore.scanning.catalog_projection import enterprise_resources
-    return enterprise_resources(PROVIDERS[payload["provider"]].content_module().roots,
-        payload, kind, cid, client, now, request_budget)
-
-
 def __getattr__(name):
     from importlib import import_module
     # Compatibility for existing private helper imports; provider code uses its own library.

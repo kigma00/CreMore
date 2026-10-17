@@ -51,7 +51,7 @@ export function roleGroupProblem(code: string | null | undefined, L: Say): strin
   const known = ROLE_GROUP_PROBLEMS[code];
   return known ? L(known[0], known[1]) : L(`역할 그룹을 읽지 못했습니다(${code}). 워커가 몇 분 뒤 다시 읽습니다.`, `The role groups could not be read (${code}). The worker reads them again in a few minutes.`);
 }
-export type QueueKind = "sqs" | "pubsub" | "servicebus";
+export type QueueKind = "sqs";
 export type Queue = { enabled: boolean; switch: boolean; installation_allows: boolean; profile_id: string; profile_id_locked: boolean;
   dedicated_acknowledged: boolean; dedicated_acknowledged_locked: boolean; blocked_by: string | null } & Record<string, unknown>;
 export type Triggers = Changed & {
@@ -70,12 +70,6 @@ export const QUEUES: Record<QueueKind, { address: string; name: string; placehol
   sqs: { address: "queue_url", name: "Amazon SQS", placeholder: "https://sqs.<region>.amazonaws.com/<account>/<queue>",
     text: ["S3 이벤트 알림(EventBridge·CloudTrail 포함)이나 코드 저장소 push 웹훅을 전달한 메시지를 읽어 바뀐 곳만 검사합니다. worker에는 이 큐의 ReceiveMessage·DeleteMessage·ChangeMessageVisibility 권한만 필요합니다.",
       "Reads S3 event notifications (EventBridge and CloudTrail included) and relayed code host push webhooks, and scans only what changed. The worker needs ReceiveMessage, DeleteMessage and ChangeMessageVisibility on this queue alone."] },
-  pubsub: { address: "subscription", name: "Google Cloud Pub/Sub", placeholder: "projects/<project>/subscriptions/<name>",
-    text: ["Cloud Storage 알림이나 전달한 push 웹훅을 받는 구독을 읽습니다. worker 신원에는 이 구독의 roles/pubsub.subscriber만 필요합니다.",
-      "Reads a subscription that receives Cloud Storage notifications or relayed push webhooks. The worker's identity needs roles/pubsub.subscriber on this subscription alone."] },
-  servicebus: { address: "queue", name: "Azure Service Bus", placeholder: "https://<namespace>.servicebus.windows.net/<queue>",
-    text: ["Blob Storage 이벤트(Event Grid), Azure DevOps push 서비스 후크나 전달한 웹훅을 받는 큐·토픽 구독을 읽습니다. worker 신원에는 그 엔터티의 Azure Service Bus Data Receiver 역할만 필요합니다.",
-      "Reads a queue or topic subscription that receives Blob Storage events (Event Grid), Azure DevOps push service hooks or relayed webhooks. The worker's identity needs Azure Service Bus Data Receiver on that entity alone."] },
 };
 // Why a queue switched on is not read yet (cremore/scanning/trigger_settings.py blocked_by).
 export function blockedText(code: string | null, L: Say): string | null {
@@ -86,7 +80,7 @@ export function blockedText(code: string | null, L: Say): string | null {
   return code;
 }
 // Providers whose change feed an Admin can pace (cremore/scanning/trigger_settings.py CHANGE_FEED_PROVIDERS).
-export const FEED_PROVIDERS = ["github", "gitlab", "azure_devops", "bitbucket", "confluence", "notion"];
+export const FEED_PROVIDERS = ["github", "notion"];
 
 /** The start times an Admin chooses from: each hour of the day on the display zone's clock, stored as the UTC minute it
  * is now (plus the saved minute when it is not on the hour there), in the order the clock reads. */
@@ -314,8 +308,8 @@ function ScanTriggers() {
           </> : null}
         </Row>
         <Row title={L("변경 감지", "Change feeds")}
-          text={L("코드 저장소·Confluence·Notion의 바뀐 곳을 공급자별 주기로 확인해 그곳만 검사합니다. 새 연동의 범위는 ‘변경되면 검사’가 켜진 채 저장됩니다.",
-            "Checks repositories, Confluence and Notion for changes at each provider's interval and scans only what changed. A new integration's scopes are saved with 'Scan when it changes' on.")}
+          text={L("GitHub·Notion의 바뀐 곳을 공급자별 주기로 확인해 그곳만 검사합니다. 새 연동의 범위는 ‘변경되면 검사’가 켜진 채 저장됩니다.",
+            "Checks GitHub and Notion for changes at each provider's interval and scans only what changed. A new integration's scopes are saved with 'Scan when it changes' on.")}
           state={state(t.change_feeds.installation_allows, "CHANGE_FEEDS", t.change_feeds.switch, true)}
           control={<Switch checked={t.change_feeds.switch} label={L("변경 감지", "Change feeds")} disabled={busy || switchLocked(t.change_feeds.installation_allows, t.change_feeds.switch)}
             onChange={next => void put({ change_feeds_enabled: next })} />}>

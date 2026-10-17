@@ -1,8 +1,7 @@
 """Optional external secret store integration (Apache-2.0)."""
 
-from cremore_vault_provider.secretstore import SecretStoreError, VaultKubernetesTokenSource, VaultKV
-
 from cremore.secretstore.resolver import SecretRefError, SecretResolver, inject_secret, parse_ref
+from cremore.secretstore.vault import SecretStoreError, VaultKubernetesTokenSource, VaultKV
 
 __all__ = [
     "SecretRefError",

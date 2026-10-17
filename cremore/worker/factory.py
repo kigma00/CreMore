@@ -26,18 +26,13 @@ def build_collector(
     http_client_factory: HTTPClientFactory | None = None,
     secret_resolver: object | None = None,
     max_object_bytes: int = DEFAULT_MAX_OBJECT_BYTES,
-    domain_cover: Callable[[str], dict | None] | None = None,
 ) -> Collector:
-    """``domain_cover(host)``: the verified company domain covering a host now (cremore.domains.covering), which
-    a website scan reads before every request; like a resolved secret it lives in this payload copy only."""
     if max_object_bytes <= 0:
         raise ValueError("max_object_bytes must be positive")
     from cremore.secretstore.resolver import inject_secret
 
     payload = inject_secret(job.kind, job.payload or {}, secret_resolver,
                             github_client_factory=http_client_factory)
-    if domain_cover is not None:
-        payload = {**payload, "domain_cover": domain_cover}
     clients = {"s3_client_factory": s3_client_factory, "http_client_factory": http_client_factory,
                "max_object_bytes": max_object_bytes}
     module = BY_JOB_KIND.get(job.kind)

@@ -15,6 +15,3 @@ slack_alerts = "cremore_siem_slack:PROVIDER"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cremore_siem_slack"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

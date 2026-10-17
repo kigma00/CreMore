@@ -211,8 +211,8 @@ class Collector:
         if ("audit" in caps) != bool(spec.options.include_audit_events) or (spec.options.include_audit_events and not events):
             raise ValueError("IDENTITY_AUDIT_OPTION_MISMATCH")
         options = spec.options
-        if (options.include_values or options.include_actions or options.locations
-                or options.include_deleted or options.include_provider_hashes or options.azure_storage_accounts
+        if (options.include_actions or options.locations
+                or options.include_deleted or options.include_provider_hashes
                 or spec.principal_pin is not None):
             raise ValueError("IDENTITY_COLLECTION_OPTION_NOT_SUPPORTED")
         if options.audit_created_after is not None:

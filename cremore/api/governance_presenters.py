@@ -73,8 +73,8 @@ def governance_item_source(c) -> dict:
     declaration = (c.config or {}).get("declaration")
     caps = {
         "canScanContent": capability(True, "NO_ENDPOINT_EVIDENCE"),
-        "canAuthenticateConnection": capability(bool(c.secret_ref) or c.provider in ("aws", "gcp"), "NO_ENDPOINT_EVIDENCE"),
-        "canListCredentials": capability(c.provider == "gcp", "NO_ENDPOINT_EVIDENCE" if c.provider == "gcp" else "CONNECTOR_NOT_IMPLEMENTED"),
+        "canAuthenticateConnection": capability(bool(c.secret_ref) or c.provider == "aws", "NO_ENDPOINT_EVIDENCE"),
+        "canListCredentials": capability(False, "CONNECTOR_NOT_IMPLEMENTED"),
     }
     item = governance_common("source", str(c.id), c.provider, provider_to_source(c.provider),
                               c.status, declaration, c.created_at, c.updated_at, caps)

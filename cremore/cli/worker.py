@@ -90,20 +90,12 @@ def build_worker(settings, repo):
 
     kv = None
     if settings.secret_store_enabled:
-        from cremore_vault_provider.secretstore import kv_from_settings
+        from cremore.secretstore.vault import kv_from_settings
 
         kv = kv_from_settings(settings)
         logging.getLogger("cremore.worker").info("secret store wired for secret_ref resolution")
     secret_resolver = SecretResolver(kv, sealing_key=settings.credential_sealing_keys
                                      if getattr(settings, "isolated_deployment", False) else settings.sealing_keys)
-
-    def domain_cover(host):
-        # A website scan reads only what a verified company domain covers now, asked before every request.
-        import datetime as _dt
-
-        from cremore import domains
-
-        return domains.covering(repo, host, _dt.datetime.now(_dt.UTC))
 
     def resolver_for(job):
         if not getattr(settings, "isolated_deployment", False):
@@ -120,7 +112,6 @@ def build_worker(settings, repo):
             http_client_factory=http_client_factory,
             secret_resolver=resolver_for(job),
             max_object_bytes=settings.max_object_size_mb * 1024 * 1024,
-            domain_cover=domain_cover,
         )
 
     # Read-only identity check of a connection's own credential (job kind
@@ -328,36 +319,7 @@ def build_worker(settings, repo):
             region = aws_sso.region_for(approved)
             return scanner_client("sso", region_name=region), aws_sso.access_token()
 
-    # The customer's own Pub/Sub subscription and Service Bus queue, read with the
-    # worker's ambient Google and Azure identities once an Admin binds one. One reader
-    # per bound address is kept across polls, so its HTTP client and credential (and
-    # the token the credential caches) are not rebuilt every five seconds.
-    _queues = {}
-
-    def reuse(kind, build):
-        def open_queue(address):
-            current = _queues.get(kind)
-            if current is None or current[0] != address:
-                _queues[kind] = (address, build(address))
-            return _queues[kind][1]
-
-        return open_queue
-
-    def open_pubsub(subscription):
-        from cremore_gcp_provider import pubsub
-
-        return pubsub.open_queue(subscription)
-
-    def open_servicebus(address):
-        from cremore_azure_provider import servicebus
-
-        return servicebus.open_queue(address)
-
     queue_openers = {}
-    if settings.scan_pubsub_allowed:
-        queue_openers["pubsub"] = reuse("pubsub", open_pubsub)
-    if settings.scan_servicebus_allowed:
-        queue_openers["servicebus"] = reuse("servicebus", open_servicebus)
 
     worker_ref["worker"] = worker = JobWorker(
         repo,
@@ -423,7 +385,7 @@ def build_dedicated_worker(settings, repo, role):
 
     kv = None
     if settings.secret_store_enabled:
-        from cremore_vault_provider.secretstore import kv_from_settings
+        from cremore.secretstore.vault import kv_from_settings
         kv = kv_from_settings(settings)
     resolver = SecretResolver(kv, sealing_key=settings.credential_sealing_keys
                               if getattr(settings, "isolated_deployment", False) else settings.sealing_keys)

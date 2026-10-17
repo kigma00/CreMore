@@ -28,8 +28,7 @@ const PREFS = "cremore.console.dashboard.v1";
 
 // Where an integration's exposure scans look, by provider.
 const SCAN_PLACES: Record<string, string[]> = {
-  github: ["github"], gitlab: ["gitlab"], bitbucket: ["bitbucket"], confluence: ["confluence"], notion: ["notion"],
-  aws: ["s3"], gcp: ["gcs"], azure: ["azure"], azure_devops: ["azure_devops"],
+  github: ["github"], notion: ["notion"], aws: ["s3"], slack: ["slack"],
 };
 
 type Prefs = { hidden: CardId[]; checks: CheckKey[]; risk: "donut" | "bars"; remed: "gauge" | "trend"; providers: string[] };
@@ -83,15 +82,14 @@ export function Dashboard({ session, go }: ViewProps) {
   // An inventory also counts when its collection predates provider connections: its rows say so.
   const inventory = Array.from(new Set([...withPurpose("inventory"), ...all.filter(c => c.issued).map(c => c.provider)]));
   const exposure = withPurpose("exposure"), vaults = withPurpose("vault");
-  const places = Array.from(new Set([...exposure.flatMap(p => SCAN_PLACES[p] ?? [p]),
-    ...active.filter(c => c.provider === "azure" && c.purposes.includes("exposure") && c.target.devops_project).map(() => "azure_devops")]));
+  const places = Array.from(new Set(exposure.flatMap(p => SCAN_PLACES[p] ?? [p])));
   const usageProviders = Array.from(new Set((all).filter(c => c.issued && c.last_used).map(c => c.provider)));
   const usageOff = inventory.filter(p => !usageProviders.includes(p));
   // A connected provider that keeps secrets too, whose secret store is not compared yet.
   const keepsSecrets = new Set((catalog.data?.providers ?? []).filter(d => d.purposes.vault).map(d => d.provider));
   const vaultGap = Array.from(new Set(active.map(c => c.provider))).filter(p => keepsSecrets.has(p) && !vaults.includes(p));
   const ownerOf = (provider: string) => active.find(c => c.provider === provider);
-  const inventoryGap = exposure.filter(p => !inventory.includes(p) && p !== "confluence");
+  const inventoryGap = exposure.filter(p => !inventory.includes(p));
 
   const go2 = (tab: "exposed" | "all" | "vault", extra: Record<string, string | null> = {}) =>
     go(tab === "exposed" ? "exposed" : "inventory", { tab: tab === "vault" ? "vault" : null, ...extra });
@@ -312,8 +310,7 @@ export function Dashboard({ session, go }: ViewProps) {
 
 // The secret store a provider keeps, by the name people call it.
 const VAULT_NAMES: Record<string, [string, string]> = {
-  aws: ["AWS Secrets Manager", "AWS Secrets Manager"], gcp: ["GCP Secret Manager", "GCP Secret Manager"], azure: ["Azure Key Vault", "Azure Key Vault"],
-  gitlab: ["GitLab CI 변수", "GitLab CI variables"], github: ["GitHub Actions 시크릿", "GitHub Actions secrets"],
+  aws: ["AWS Secrets Manager", "AWS Secrets Manager"], github: ["GitHub Actions 시크릿", "GitHub Actions secrets"],
 };
 function vaultName(provider: string, L: (ko: string, en: string) => string) {
   const known = VAULT_NAMES[provider];

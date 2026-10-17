@@ -8,13 +8,12 @@ from fastapi import Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import Field
 
-from cremore.api.auth import role_at_least
 from cremore.coverage.correlation import public_connection, report, scope_revision
 from cremore.coverage.models import Batch, ConnectionSpec, Contract, Finish, Start, StrictModel
 from cremore.coverage.store import CoverageError, CoverageStore
 
 # Integration: the source_type filter accepts the registry's content sources instead of a
-# copied literal; the order and values are unchanged (cremore/sources/module_contract_test.py).
+# copied literal; keep the order and values aligned with the web source list.
 from cremore.sources.registry import SOURCE_TYPES
 
 
@@ -30,8 +29,7 @@ class ScopeDeclaration(StrictModel):
     confirmed: bool
 
 
-class VaultToken(StrictModel):
-    token: str = Field(min_length=1, max_length=8192)
+AWS_COVERAGE_PROVIDERS = frozenset({"aws_iam", "aws_cloudtrail", "aws_secrets_manager", "aws_ssm"})
 
 
 def register_coverage_routes(app, repo, orchestrator, require_auth, require_role, aws_sessions=None, settings=None,
@@ -45,10 +43,6 @@ def register_coverage_routes(app, repo, orchestrator, require_auth, require_role
     require_analyst = require_role("analyst")
     reader = require_principal or require_auth
 
-    def references(who):
-        """Vault/OpenBao accessor and lease IDs are shown to admins only (vault/README.md)."""
-        return not hasattr(who, "role") or role_at_least(who.role, "admin")
-
     def contract():
         orchestrator.refresh_rules()
         return Contract(engine_digest=orchestrator.engine.detection_digest, policy_digest=orchestrator.coverage_policy_digest).model_dump()
@@ -57,6 +51,8 @@ def register_coverage_routes(app, repo, orchestrator, require_auth, require_role
         row = store.get(connection_id)
         store.authorize(row, x_cremore_collector_token)
         require_v1(row)
+        if row["spec"]["provider"] not in AWS_COVERAGE_PROVIDERS:
+            raise CoverageError("COVERAGE_PROVIDER_UNAVAILABLE")
         return x_cremore_collector_token
 
     def require_v1(row):
@@ -79,14 +75,13 @@ def register_coverage_routes(app, repo, orchestrator, require_auth, require_role
 
     @app.get("/api/v1/coverage")
     def get_report(offset: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=500),
-                   state: Literal["", "MATCHED", "NO_VAULT_MATCH", "UNKNOWN", "IDENTIFIER_ONLY", "IDENTIFIER_NOT_OBSERVED", "OBSERVED_IN_VAULT", "MANAGED", "PUBLIC_CERTIFICATE_MATCH", "PUBLIC_CERTIFICATE_NOT_OBSERVED"] = "",
+                   state: Literal["", "MATCHED", "NO_VAULT_MATCH", "UNKNOWN", "IDENTIFIER_ONLY", "IDENTIFIER_NOT_OBSERVED", "OBSERVED_IN_VAULT", "PUBLIC_CERTIFICATE_MATCH", "PUBLIC_CERTIFICATE_NOT_OBSERVED"] = "",
                    source_type: Literal[("", *SOURCE_TYPES)] = "",
-                   vault_provider: Literal["", "aws_secrets_manager", "aws_ssm", "vault", "openbao", "gcp_secret_manager", "azure_key_vault", "gitlab", "external_vault"] = "",
-                   origin: Literal["", "EXPOSURE", "ISSUANCE", "USAGE", "VAULT", "MANAGEMENT"] = "",
+                   vault_provider: Literal["", "aws_secrets_manager", "aws_ssm"] = "",
+                   origin: Literal["", "EXPOSURE", "ISSUANCE", "USAGE", "VAULT"] = "",
                    who=Depends(reader)):
         return report(repo, contract(), offset=offset, limit=limit, state=state, source_type=source_type,
-                      vault_provider=vault_provider, origin=origin, fingerprint_key_id=key_id(), settings=settings,
-                      management_references=references(who))
+                      vault_provider=vault_provider, origin=origin, fingerprint_key_id=key_id(), settings=settings)
 
     @app.put("/api/v1/coverage/scope")
     def declare_scope(body: ScopeDeclaration, actor=Depends(require_admin)):
@@ -99,27 +94,15 @@ def register_coverage_routes(app, repo, orchestrator, require_auth, require_role
     def finding_coverage(finding_id: uuid.UUID, who=Depends(reader)):
         if repo.get_finding(finding_id) is None:
             raise HTTPException(404, "FINDING_NOT_FOUND")
-        return report(repo, contract(), finding_id=finding_id, fingerprint_key_id=key_id(), settings=settings,
-                      management_references=references(who))
+        return report(repo, contract(), finding_id=finding_id, fingerprint_key_id=key_id(), settings=settings)
 
     @app.patch("/api/v1/coverage/connections/{connection_id}")
     def change(connection_id: uuid.UUID, body: Change, actor=Depends(require_admin)):
         current = require_v1(store.get(connection_id))
         spec = body.spec
-        if spec is not None and current is not None:
-            refs = current["spec"].get("secret_refs") or {}
-            # The credential and the login belong to the provider connection that owns this
-            # collection. An edit may omit the reference or echo what the view showed
-            # ("configured"); anything else would be a reference it chose.
-            sent = spec.secret_refs if "secret_refs" in spec.model_fields_set else {}
-            login = current["spec"].get("server_auth")
-            if "server_auth" in spec.model_fields_set:  # an edit that leaves it out keeps it
-                sent_login = spec.server_auth.model_dump() if spec.server_auth is not None else None
-                if sent_login != login:
-                    raise CoverageError("CREDENTIAL_BELONGS_TO_PROVIDER_CONNECTION")
-            if any(value != "configured" and value != refs.get(slot) for slot, value in sent.items()):
-                raise CoverageError("CREDENTIAL_BELONGS_TO_PROVIDER_CONNECTION")
-            spec = ConnectionSpec.model_validate({**spec.model_dump(), "secret_refs": refs, "server_auth": login})
+        selected_provider = spec.provider if spec is not None else current["spec"]["provider"] if current else None
+        if (spec is not None or body.enabled is True) and selected_provider not in AWS_COVERAGE_PROVIDERS:
+            raise CoverageError("COVERAGE_PROVIDER_UNAVAILABLE")
         row, token = store.change(connection_id, body.revision, actor, spec=spec, enabled=body.enabled, rotate=body.rotate_token)
         return {**public_connection(row), "collector_token": token}
 
@@ -140,11 +123,11 @@ def register_coverage_routes(app, repo, orchestrator, require_auth, require_role
     def enqueue(connection_id, actor="api"):
         from cremore_aws_provider import aws_access
 
-        from cremore.coverage.aws_scheduling import enqueue_aws_inventory, enqueue_server_vault
+        from cremore.coverage.aws_scheduling import enqueue_aws_inventory
         row = store.get(connection_id)
         require_v1(row)
-        if row and row["enabled"] and row["spec"]["provider"] in ("vault", "openbao") and row["spec"].get("server_collection"):
-            return enqueue_server_vault(repo, connection_id, actor=actor)
+        if row and row["spec"]["provider"] not in AWS_COVERAGE_PROVIDERS:
+            raise CoverageError("COVERAGE_PROVIDER_UNAVAILABLE")
         if (row and row["enabled"] and row["spec"]["provider"] not in ("aws_iam", "aws_cloudtrail")
                 and not row["spec"].get("server_collection")):
             raise HTTPException(409, "VAULT_COLLECTION_RUNS_IN_CUSTOMER_ENVIRONMENT")

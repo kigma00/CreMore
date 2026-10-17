@@ -1,19 +1,11 @@
 """Explicit built-in source modules; importing contracts performs no runtime I/O."""
 
-import cremore_atlassian_provider.bitbucket_source as bitbucket
-import cremore_atlassian_provider.confluence_source as confluence
 import cremore_aws_provider.source as aws
-import cremore_azure_provider.blob_source as azure_blob
-import cremore_azure_provider.devops_source as azure_devops
-import cremore_gcp_provider.source as gcp
 import cremore_github_provider.source as github
-import cremore_gitlab_provider.source as gitlab
 import cremore_notion_provider.source as notion
-import cremore_website_provider.source as website
 
 # Preserve the public source/job ordering separately from capability display order.
-PROVIDERS = {module.PROVIDER: module for module in (aws, github, notion, gitlab, gcp, confluence, bitbucket, azure_blob,
-                                                     azure_devops, website)}
+PROVIDERS = {module.PROVIDER: module for module in (aws, github, notion)}
 PROVIDER_FAMILIES = {name: getattr(module, "FAMILY", name) for name, module in PROVIDERS.items()}
 BY_SOURCE = {module.SOURCE_TYPE: module for module in PROVIDERS.values()}
 BY_JOB_KIND = {kind: module for module in PROVIDERS.values() for kind in module.JOB_KINDS}

@@ -51,9 +51,6 @@ isolation:
     aws:
       webIdentity: { enabled: false, roleArn: "", audience: sts.amazonaws.com, expirationSeconds: 3600 }
       rolesAnywhere: { enabled: false, secretName: "" }
-    gcp: { adcSecretName: "", adcSecretKey: adc.json, quotaProject: "", oauth: { secretName: "" } }
-    azure:
-      workloadIdentity: { enabled: false, clientId: "", tenantId: "", tokenExpirationSeconds: 3600 }
   migrationJob:
     enabled: false
     # Run deliberately before the rollout, never as an automatic API init container.
@@ -113,46 +110,6 @@ aws:
     # Existing Secret keys: aws-config, roles-anywhere.json, certificate.pem, private.pem.
     # The API/worker image must include the verified helper named in the JSON.
     secretName: ""
-
-gcp:
-  adcSecretName: ""
-  adcSecretKey: adc.json
-  quotaProject: ""
-  # Existing Secret, consumed only by API. Worker resolves sealed DB references.
-  oauth:
-    secretName: ""
-    clientIdKey: client-id
-    clientSecretKey: client-secret
-    redirectUri: ""
-
-# Microsoft Entra Workload ID (AKS): the API and worker exchange a projected
-# service-account token for an Entra token. The webhook injects AZURE_CLIENT_ID,
-# AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE, which DefaultAzureCredential
-# reads. Needs the cluster's workload identity add-on and a federated identity
-# credential for each service account (subject
-# system:serviceaccount:<namespace>:<service account>).
-azure:
-  workloadIdentity:
-    enabled: false
-    clientId: ""
-    # Empty uses the tenant the webhook is configured with.
-    tenantId: ""
-    # 3600-86400; the webhook's default is 3600.
-    tokenExpirationSeconds: 3600
-
-# Worker reads of other Vault/OpenBao clusters with each connection's own login
-# (a connection's server_auth, docs/EXTERNAL_VAULT.md). Each entry projects one
-# service-account token bound to that cluster's audience into
-# VAULT_CONNECTION_TOKEN_DIR/<name>; the connection names the file. egress opens
-# the worker to those clusters (Vault listens on 8200 by default).
-vaultConnections:
-  tokens: []
-  #  - name: vault-pay
-  #    audience: vault-pay
-  expirationSeconds: 600
-  egress: []
-  #  - cidr: 10.20.0.0/16
-  #    port: 8200
 
 # Owner contact that CreMore sends itself (Integrations > Other settings > Contact
 # delivery): the API talks to the company's SMTP relay, which NetworkPolicy blocks
@@ -239,12 +196,6 @@ scanning:
   # Change feeds read what changed in approved repositories and spaces (5 minutes by
   # default, per provider in the dashboard).
   changeFeedsMode: enabled
-  # The customer's own Pub/Sub subscription and Service Bus queue or topic
-  # subscription, bound and acknowledged in the dashboard like the SQS queue.
-  pubsub:
-    mode: enabled
-  serviceBus:
-    mode: enabled
   sqs:
     mode: enabled
     # Optional pins, as above. dedicatedAcknowledged=true here permanently
@@ -354,8 +305,8 @@ config:
   # instead of approving the runtime AWS identity in the dashboard.
   scannerPrincipalArn: ""
   # Installed ticket-system plugins an admin may choose for owner approvals and
-  # exposure responses (TICKET_SYSTEM_PLUGINS, comma-separated ids such as
-  # "jira"); empty offers none. Rendered into the API and worker containers.
+  # exposure responses (TICKET_SYSTEM_PLUGINS, comma-separated ids);
+  # empty offers none. Rendered into the API and worker containers.
   ticketSystemPlugins: ""
   # platform.heartbeat for the SIEM every heartbeatMinutes (1-60), and days a
   # delivered SIEM event is kept (0 keeps finding and connection events;

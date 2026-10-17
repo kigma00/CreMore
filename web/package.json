@@ -5,9 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "test": "node --test tests/*.test.cjs",
-    "test:browser": "node tests/run-browser-proofs.cjs"
+    "start": "next start"
   },
   "dependencies": {
     "next": "16.3.8",
@@ -18,7 +16,6 @@
     "@types/node": "22.13.10",
     "@types/react": "19.0.10",
     "@types/react-dom": "19.0.4",
-    "playwright": "1.63.0",
     "typescript": "5.8.2"
   }
 }

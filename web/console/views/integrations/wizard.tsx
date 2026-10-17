@@ -15,7 +15,6 @@
 
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { completeSignIn, pending, startSignIn } from "@/console/gcp-oauth";
 import { useLocale } from "@/components/locale";
 import { reasonText, send, useApi, useSaved } from "@/console/data";
 import { Ic, Tick } from "@/console/icons";
@@ -34,16 +33,15 @@ import {
 import { capName, featureName, featureText, methodHint, renewalTag } from "@/console/views/integrations/copy";
 import { FieldGrid, CredentialField } from "@/console/views/integrations/fields";
 import { AuthFirstWizard, ReduceTargets, rememberedDraft } from "@/console/views/integrations/auth-first";
-import { GoogleConsent } from "@/console/views/integrations/google-client";
 import { startGitHubApp } from "@/console/views/integrations/github-app";
 import { enterpriseReady, GitHubEnterpriseModal } from "@/console/views/integrations/github-enterprise";
 import { readJourney, rememberJourney, setupGroups, type SetupGroup, type SetupJourney } from "@/console/views/integrations/setup";
 import { guideSteps, SetupGuide } from "@/console/views/integrations/guide";
 import {
   type Catalog, type CollectionEntry, forCollectionEntry, purposesForEdition, CONNECTIONS_PATH, type Created, checkItems, checkSummary, checked, combinable, type Descriptor, defaults,
-  detailText, expiryDay, expiryKeys, familyOf, type FieldSpec, type Generated, generatedOf, type Health, HEALTH_PATH, type HealthItem, healthOf,
-  idleReaderField, inEntryView, label, type MadeKey, madeKeyOf, type Method, methodsFor, missingRequired, onboardingText,
-  payload, peopleDirectoryBlock, permissionsFor, planFields, type ProviderConnection, type Purpose, purposesOf, type Renewed, renewalText, saveExpiry, SCHEDULES,
+  detailText, expiryDay, expiryKeys, familyOf, type FieldSpec, type Health, HEALTH_PATH, type HealthItem, healthOf,
+  idleReaderField, inEntryView, label, type Method, methodsFor, missingRequired, onboardingText,
+  payload, peopleDirectoryBlock, permissionsFor, planFields, type ProviderConnection, type Purpose, purposesOf, saveExpiry, SCHEDULES,
   scanEntryOf, scansFor, scheduleLabel, sharedNote, sharedTarget, shown, switchable, switchType, takesExpiry, targetFields, targetSummary, type TypeChoice, typeChoices,
   typeFields, type Values, valuesOf,
 } from "@/console/views/integrations/model";
@@ -55,8 +53,7 @@ import { api } from "@/lib/dashboard-api";
 
 export type WizardOpen =
   | { provider: string; purpose?: string; target?: Values; edition?: string; entry?: CollectionEntry }
-  | { id: string; step?: 1 | 2 | 3; addPurpose?: Purpose; entry?: CollectionEntry }
-  | { oauth: string; entry?: CollectionEntry };
+  | { id: string; step?: 1 | 2 | 3; addPurpose?: Purpose; entry?: CollectionEntry };
 
 type Step = 1 | 2 | 3 | 4;
 const POLL_MS = 1500, POLL_LIMIT_MS = 150_000;
@@ -97,7 +94,7 @@ type WizardProps = {
 export function ConnectWizard(props: WizardProps) {
   const L = useL();
   const open = props.open;
-  const provider = "provider" in open ? open.provider : "oauth" in open ? "gcp" : null;
+  const provider = "provider" in open ? open.provider : null;
   const original = props.catalog.providers.find(d => d.provider === provider);
   const named: CollectionEntry = "provider" in open && open.entry ? open.entry
     : "provider" in open && (open.purpose === "exposure" || open.provider === "website") ? "exposure" : "account";
@@ -113,9 +110,9 @@ export function ConnectWizard(props: WizardProps) {
   });
   // A saved choice is resumed with a provider's return, or with its own setup journey, checked against that card's
   // features (a content journey is not valid against the account card's).
-  const resumed = saved && ("oauth" in open || (provider === "github" && rememberedDraft("cremore:onboarding:github:new"))
+  const resumed = saved && ((provider === "github" && rememberedDraft("cremore:onboarding:github:new"))
     || (original && readJourney(forCollectionEntry(original, saved.entry)))) ? saved : null;
-  const restoring = "oauth" in open || Boolean(resumed) || Boolean(original && readJourney(forCollectionEntry(original, named)));
+  const restoring = Boolean(resumed) || Boolean(original && readJourney(forCollectionEntry(original, named)));
   const entry = resumed?.entry ?? named;
   // The account card offers only the editions with an account feature; with none (no account card), every edition stays.
   const withAccount = useMemo(() => {
@@ -162,11 +159,10 @@ export function ConnectWizard(props: WizardProps) {
         try { sessionStorage.setItem(`cremore:onboarding-entry:${original.provider}`, JSON.stringify(value)); } catch { /* Redirect-free setup still works. */ }
       }}>{L("인증으로", "Continue to sign-in")}</button></div>
   </Modal>;
-  // The entry the flow continues with: a provider's return ({oauth}) has only the choice saved before leaving.
-  const flowEntry = choice?.entry ?? ("oauth" in open ? undefined : entry);
-  return <ConnectionFlow {...props} authenticationOnly={accountOnly} catalog={catalog} open={"provider" in open ? {
-    ...open, target: { ...open.target, ...Object.fromEntries(productFields.map(f => [f.name, product[f.name]])) }, edition: selectedEdition, entry: flowEntry }
-    : { ...open, entry: flowEntry }} />;
+  // Continue with the chosen provider and product.
+  const flowEntry = choice?.entry ?? entry;
+  return <ConnectionFlow {...props} authenticationOnly={accountOnly} catalog={catalog} open={{
+    ...open, target: { ...open.target, ...Object.fromEntries(productFields.map(f => [f.name, product[f.name]])) }, edition: selectedEdition, entry: flowEntry }} />;
 }
 
 function ConnectionFlow(props: WizardProps) {
@@ -176,8 +172,7 @@ function ConnectionFlow(props: WizardProps) {
   const [legacyMethod, setLegacyMethod] = useState<{ method: string; edition: string } | null>(null);
   const [targetEditor, setTargetEditor] = useState<ProviderConnection | null>(null);
   const open = props.open;
-  const [oauthDraft] = useState(() => "oauth" in open && pending()?.onboarding_id ? open.oauth : undefined);
-  const initialDescriptor = props.catalog.providers.find(d => d.provider === ("provider" in open ? open.provider : oauthDraft ? "gcp" : ""));
+  const initialDescriptor = props.catalog.providers.find(d => d.provider === ("provider" in open ? open.provider : ""));
   const [journey, setJourney] = useState<SetupJourney | null>(() => initialDescriptor ? readJourney(initialDescriptor) : null);
   const [assignment, setAssignment] = useState<SetupGroup | undefined>(() => journey?.current);
   const [finished, setFinished] = useState(false);
@@ -229,7 +224,7 @@ function ConnectionFlow(props: WizardProps) {
     onClose={close} onAdvanced={() => setTargetEditor(null)} />;
   const initialPurposes = assignment?.purposes ?? journey?.requested ?? ("provider" in open && open.purpose && descriptor?.purposes[open.purpose as Purpose] ? [open.purpose as Purpose] : undefined);
   if (!advanced && descriptor?.auth_methods.some(m => m.auth_first && m.new_setup !== false) && (!assignment || descriptor.auth_methods.find(m => m.id === assignment.method)?.auth_first)) return <AuthFirstWizard
-    key={assignment ? `${assignment.edition}:${assignment.method}:${assignment.purposes.join()}` : "initial"} descriptor={descriptor} resumeOauth={oauthDraft} admin={props.admin} schedulesAllowed={props.catalog.schedules_allowed}
+    key={assignment ? `${assignment.edition}:${assignment.method}:${assignment.purposes.join()}` : "initial"} descriptor={descriptor} admin={props.admin} schedulesAllowed={props.catalog.schedules_allowed}
     initialPurposes={initialPurposes} initialMethod={assignment?.method} initialEdition={assignment?.edition ?? journey?.edition ?? ("provider" in open ? open.edition : undefined)} supplemental={Boolean(assignment)} progress={progress}
     authenticationOnly={props.authenticationOnly} entry={entry}
     onIntent={assignment ? undefined : (edition, requested) => selected(descriptor, edition, requested, undefined, [])}
@@ -372,7 +367,7 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
     let live = true;
     (async () => {
       try {
-        const id = "oauth" in open ? await completeSignIn(open.oauth) : open.id;
+        const id = open.id;
         const record = await api<ProviderConnection>(`${CONNECTIONS_PATH}/${id}`);
         if (!live) return;
         adopt(record);
@@ -380,15 +375,12 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
           && catalog.providers.find(d => d.provider === record.provider)?.auth_methods.some(m => m.id === record.auth_method && m.auth_first)) {
           onEditTargets(record); return;
         }
-        if ("oauth" in open) { setStep(2); setPolling(true); saved(); }
-        else if (record.checks.requested_at && !checked(record) && record.status !== "DISABLED") setPolling(true);
+        if (record.checks.requested_at && !checked(record) && record.status !== "DISABLED") setPolling(true);
         else if (!open.step) setStep(record.status === "ACTIVE" ? 1 : record.status === "CHECKED" && checked(record) ? 3 : 2);
       } catch (reason) {
         if (!live) return;
         const message = reason instanceof Error ? reason.message : "";
-        setLoadError(message.startsWith("GCP_OAUTH_SESSION_EXPIRED")
-          ? L("Google 승인 세션이 만료됐습니다. 연동 설정에서 다시 승인하세요.", "The Google approval session expired. Approve again from the integration settings.")
-          : onboardingText(message, [], L) ?? reasonText(reason, L));
+        setLoadError(onboardingText(message, [], L) ?? reasonText(reason, L));
       }
     })();
     return () => { live = false; };
@@ -614,7 +606,7 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
   </div> : null;
 
   const scans = purposes.includes("exposure") && inEntryView("exposure", entry) ? scansFor(d, edition, targetNow) : [];
-  const scopeSource = d.provider === "aws" ? "s3" : d.provider === "azure" ? "azure_blob" : d.provider;
+  const scopeSource = d.provider === "aws" ? "s3" : d.provider;
   const scopeUnit = unitOf(scopeSource, L);
   const scopePatterns = splitPatterns(scopeText);
   const scopeMissing = own.includes("exposure") && scopeMode === "named" && !scopePatterns.length;
@@ -639,7 +631,7 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
         </select></div>
       {scopeMode === "named" ? <div className="field"><label htmlFor="ig-scope-text">{L(`${scopeUnit} 이름·경로`, `Names or paths of ${scopeUnit}`)}</label>
         <input id="ig-scope-text" value={scopeText} onChange={event => setScopeText(event.target.value)} spellCheck={false}
-          placeholder={scopeSource === "website" ? L("예: acme.com", "e.g. acme.com") : L("예: platform/*, data/ingest-worker", "e.g. platform/*, data/ingest-worker")} /></div> : null}
+          placeholder={L("예: platform/*, data/ingest-worker", "e.g. platform/*, data/ingest-worker")} /></div> : null}
     </div>
     <p className="ig-hint"><Ic name="info" size={15} /><span>{scopeMode === "all"
       ? L(`연동을 마치면 ${scopeUnit} 목록을 가져와 지금 보이는 전부를 검사 범위로 저장하고 첫 검사를 시작합니다. 나중에 생긴 ${josa(scopeUnit, "은/는")} 범위를 다시 정할 때 들어갑니다.`, `After connecting, the ${scopeUnit} list is read and everything visible now is saved as the scan scope, then the first scan starts. Any ${scopeUnit} created later join when the scope is set again.`)
@@ -661,16 +653,7 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
   const sameMethod = Boolean(conn && method && conn.auth_method === method.id);
   const storedCredential = Boolean(sameMethod && conn!.credential.roles.length);
   const visible = fieldsOf.filter(field => !byRef || field.public);
-  // A credential CreMore makes (a Microsoft app certificate): its public field says which app it is for, and
-  // a certificate exists once it was made for this connection.
-  const generating = Boolean(method?.generated);
-  const made = sameMethod ? generatedOf(conn) : null;
-  const madeKey = sameMethod ? madeKeyOf(conn) : null;
-  // What CreMore makes: a certificate (Microsoft) or a signing key (Okta).
-  const keyKind = d.provider === "okta";
-  const storedPublic = sameMethod ? conn?.target.auth as Record<string, string> | undefined : undefined;
-  const changedPublic = visible.some(field => secrets[field.name]?.trim() && secrets[field.name].trim() !== storedPublic?.[field.name]);
-  const entered = generating ? changedPublic : Boolean(reference.trim()) || visible.some(field => secrets[field.name]?.trim());
+  const entered = Boolean(reference.trim()) || visible.some(field => secrets[field.name]?.trim());
   const filled = visible.filter(field => !field.optional).every(field => secrets[field.name]?.trim()) && (!byRef || Boolean(reference.trim()));
   const credentialReady = entered ? filled : storedCredential || filled;
   const credentialBody = () => {
@@ -700,10 +683,6 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
       setExpiry(null); saved();
     } finally { setExpirySaving(false); }
   }
-  // What a made credential is for: the typed values, or the ones the stored certificate was made with.
-  const madeFor = () => Object.fromEntries(visible.map(field => [field.name, secrets[field.name]?.trim() || storedPublic?.[field.name] || ""]));
-  const madeReady = generating && visible.filter(field => !field.optional).every(field => madeFor()[field.name]);
-
   async function savePurposes() {
     if (!conn || !purposesChanged) return conn;
     const next = await send<ProviderConnection>(`${CONNECTIONS_PATH}/${conn.id}/purposes`, "PUT",
@@ -712,27 +691,6 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
     return next;
   }
 
-  // CreMore makes the key and the certificate; nothing secret is typed. A new connection is stored with it (the
-  // check waits until the certificate is uploaded); an existing one takes a new certificate for every record.
-  async function makeCertificate() {
-    if (!method) return;
-    setBusy("test"); setError(null);
-    try {
-      let current = await savePurposes();
-      if (!current) {
-        current = await send<ProviderConnection>(CONNECTIONS_PATH, "POST", { provider: d!.provider, edition, purposes,
-          auth_method: method.id, target: payload(tFields, targetValues), credential: madeFor() });
-        setName(current.name); adopted.current = true;
-      } else {
-        current = await send<ProviderConnection>(`${CONNECTIONS_PATH}/${current.id}/credential`, "PUT",
-          { auth_method: method.id, credential: madeFor(), expected_revision: current.revision });
-        moved(current);
-      }
-      forget(); setConn(current); saved();
-    } catch (reason) {
-      fail(reason, allFields);
-    } finally { setBusy(""); }
-  }
   const scheduleNames = new Set(purposes.flatMap(p => planOf(p).filter(f => f.name === "schedule_minutes" || f.schedule).map(f => f.name)));
   const accessPlan = (value: Record<string, unknown>) => Object.fromEntries(Object.entries(value).filter(([key]) => !scheduleNames.has(key)).sort(([a], [b]) => a.localeCompare(b)));
   const checkedAt = Date.parse(conn?.checks.checked_at ?? "");
@@ -807,26 +765,6 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
       await startGitHubApp({ ...(current ? { provider_connection_id: current.id } : {}), edition, purposes,
         target: conn ? Object.fromEntries(Object.entries(conn.target).filter(([key]) => key !== "auth")) : payload(tFields, targetValues),
         ...(name.trim() ? { name: name.trim() } : {}) });
-    } catch (reason) {
-      fail(reason, allFields); setBusy("");
-    }
-  }
-
-  async function google() {
-    if (!method) return;
-    setBusy("google"); setError(null);
-    try {
-      let current = await savePurposes();
-      if (!current) {
-        current = await send<ProviderConnection>(CONNECTIONS_PATH, "POST", { provider: d!.provider, edition, purposes,
-          auth_method: method.id, target: payload(tFields, targetValues), credential: {} });
-        setConn(current); setName(current.name); adopted.current = true; saved();
-      } else if (current.auth_method !== method.id) {
-        current = await send<ProviderConnection>(`${CONNECTIONS_PATH}/${current.id}/credential`, "PUT",
-          { auth_method: method.id, credential: {}, expected_revision: current.revision });
-        setConn(current);
-      }
-      await startSignIn(current.id, locale);
     } catch (reason) {
       fail(reason, allFields); setBusy("");
     }
@@ -1038,13 +976,7 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
         <span className="tag" data-tip={renewal.tip}><Ic name={method.renewal === "AUTOMATIC" || method.renewal === "ROTATES" ? "refresh" : method.renewal === "EXPIRES" ? "hourglass" : "key"} size={13} />{renewal.text}</span>
       </div>
       <div className="ig-auth-pane">
-        {method.flow === "gcp_oauth" ? <>
-          <GoogleConsent d={d} approved={approved} perms={perms.flatMap(item => item.list.map(permission => permission.id))} busy={busy === "google"} onApprove={() => void google()} />
-          {approved ? <div className="ig-test">
-            <button type="button" className="ghost-btn" disabled={Boolean(busy) || polling} onClick={() => void test()}><Ic name="bolt" size={15} />{L("권한 다시 확인", "Check again")}</button>
-            <TestResult polling={polling || busy === "test"} checkedNow={checkedNow} summary={summary} items={items} error={conn?.checks.error} />
-          </div> : null}
-        </> : method.id === "github_app" && !typeApp && !storedCredential ? <>
+        {method.id === "github_app" && !typeApp && !storedCredential ? <>
           <div className="ig-make">
             <span className="ig-make-logo"><Logo id="github" size={22} /></span>
             <div className="ig-cert-body">
@@ -1059,9 +991,6 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
         </> : <>
           {method.id === "github_app" && typeApp && !storedCredential ? <button type="button" className="link-btn ig-ref-toggle" onClick={() => { setTypeApp(false); forget(); }}>
             {L("GitHub에서 만들기로 돌아가기", "Back to making it on GitHub")}</button> : null}
-          {made ? <CertificateCard made={made} renewal={conn?.checks.renewal ?? null} busy={Boolean(busy) || polling}
-            onRemake={() => void makeCertificate()} /> : null}
-          {madeKey ? <KeyCard made={madeKey} busy={Boolean(busy) || polling} onRemake={() => void makeCertificate()} /> : null}
           {visible.map(field => <CredentialField key={field.name} field={field} value={secrets[field.name] ?? ""} stored={storedCredential}
             shownValue={field.public && sameMethod ? (conn?.target.auth as Record<string, string> | undefined)?.[field.name] : undefined}
             onChange={value => setSecrets(all => ({ ...all, [field.name]: value }))} />)}
@@ -1088,22 +1017,14 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
             : L(`CreMore는 승인한 AWS 신원 ${identityText(idView, L)}(으)로 계정에 접근합니다.`, `CreMore reaches the accounts as the approved AWS identity ${identityText(idView, L)}.`)}</span></p> : null}
           <SetupGuide steps={guideSteps(d, method, conn, { aws: idView, openMachine: onMachineIdentity, target: targetNow,
             plans: Object.fromEntries(checkPurposes.map(p => [p, planValues(p)])), stored: storedCredential }, L)} onCopy={copy} />
-          {generating && (!(made || madeKey) || entered) ? <div className="ig-test">
-            <button type="button" className="primary-btn" disabled={Boolean(busy) || polling || !madeReady} onClick={() => void makeCertificate()}
-              data-tip={madeReady ? undefined : keyKind ? L("클라이언트 ID를 먼저 입력하세요.", "Enter the client ID first.")
-                : L("애플리케이션(클라이언트) ID를 먼저 입력하세요.", "Enter the application (client) ID first.")}>
-              <Ic name="key" size={15} />{keyKind ? (madeKey ? L("이 앱의 키 만들기", "Make a key for this app") : L("키 만들기", "Make the key"))
-                : made ? L("이 앱의 인증서 만들기", "Make a certificate for this app") : L("인증서 만들기", "Make the certificate")}</button>
-            <span className="ig-sub">{keyKind ? L("개인 키는 CreMore 안에서만 쓰고, 서비스 앱에는 공개 키만 붙여 넣습니다.", "The private key stays inside CreMore; only the public key goes to the service app.")
-              : L("개인 키는 CreMore 안에서만 쓰고, 앱 등록에는 공개 인증서만 올립니다.", "The private key stays inside CreMore; only the public certificate goes to the app registration.")}</span>
-          </div> : <div className="ig-test">
+          <div className="ig-test">
             <button type="button" className="ghost-btn" disabled={Boolean(busy) || polling || !credentialReady || idBlocked || expiryInvalid} onClick={() => void test()}
               data-tip={awsIdentity && !idView ? L("CreMore의 AWS 로그인을 확인하고 있습니다.", "Checking CreMore's AWS sign-in.")
                 : approving && !admin ? L("관리자가 연결을 확인하면서 신원을 승인합니다.", "An administrator approves the identity while testing.") : undefined}>
               <Ic name="bolt" size={15} />{conn?.checks.checked_at && !entered && sameMethod && !approving ? L("권한 다시 확인", "Check again") : L("연결 확인", "Test connection")}</button>
             {idIssue ? <span className="ig-result bad" role="status"><Ic name="alert" size={16} />{idIssue.text}</span>
               : <TestResult polling={polling || busy === "test"} checkedNow={checkedNow} summary={summary} items={items} error={conn?.checks.error} />}
-          </div>}
+          </div>
           {idIssue?.fix ? <p className="ig-hint"><Ic name="info" size={15} /><span>{idIssue.fix}</span></p> : null}
           {idIssue?.signIn && admin ? <AwsSignIn onDone={() => identity.reload()} /> : null}
           {idIssue?.code ? <pre className="re-preview ig-code">{idIssue.code}</pre> : null}
@@ -1252,8 +1173,7 @@ function ConnectionSettings({ catalog, open, onClose, admin, onMachineIdentity, 
     {body}
     {awsTail}
     <div className="modal-foot">
-      {step === 2 && fieldsOf.length ? <span className="note">{method?.generated ? L("CreMore가 만든 개인 키는 암호화해 저장하고 밖으로 내보내지 않습니다.", "The private key CreMore makes is stored encrypted and never leaves it.")
-        : L("입력한 값은 암호화해 저장하고 화면에 다시 보여 주지 않습니다.", "What you enter is stored encrypted and never shown again.")}</span> : null}
+      {step === 2 && fieldsOf.length ? <span className="note">{L("입력한 값은 암호화해 저장하고 화면에 다시 보여 주지 않습니다.", "What you enter is stored encrypted and never shown again.")}</span> : null}
       {step > 1 ? <button type="button" className="ghost-btn" disabled={Boolean(busy)} onClick={() => { setError(null); setStep(value => (value - 1) as Step); }}>{L("이전", "Back")}</button>
         : <button type="button" className="ghost-btn" onClick={onClose}>{L("취소", "Cancel")}</button>}
       {step < 3 ? <button type="button" className="primary-btn" id="ig-next" disabled={!canNext} data-tip={nextTip}
@@ -1285,29 +1205,6 @@ function ScopeLine({ name, progress, onRetry }: { name: string; progress: ScopeP
     : progress.step === "selecting" ? L("검사할 곳을 고르는 중입니다", "Choosing what to scan")
       : L(`${unit} ${progress.count}개를 검사 범위로 저장하는 중입니다`, `Saving ${progress.count} ${unit} as the scan scope`);
   return <div className="ig-result none"><span className="spinner" aria-hidden="true" /><span>{who}{text}</span></div>;
-}
-
-/* ---------- a certificate CreMore made ---------- */
-
-function CertificateCard({ made, renewal, busy, onRemake }: { made: Generated; renewal: Renewed | null; busy: boolean; onRemake: () => void }) {
-  const L = useL();
-  const locale = useLocale();
-  const failed = renewal?.state === "FAILED" && renewal.action !== "retire";
-  return <div className={cls("ig-cert", failed && "bad")}>
-    <span className="ig-cert-ic"><Ic name="shield" size={18} /></span>
-    <div className="ig-cert-body">
-      <b>{L("CreMore가 만든 인증서", "Certificate CreMore made")}</b>
-      <span className="ig-sub">{L("지문(SHA-1)", "Thumbprint (SHA-1)")} <span className="mono">{made.thumbprint}</span></span>
-      <span className="ig-sub">{L(`${fmtDay(made.not_after, locale)}까지 · 만료 전에 CreMore가 새 인증서로 바꿉니다`,
-        `Valid until ${fmtDay(made.not_after, locale)} · CreMore replaces it before it expires`)}</span>
-      {failed ? <span className="ig-cert-note"><Ic name="alert" size={14} />{L("자동 교체 실패", "Renewal failed")} · {renewalText(renewal?.code, L)}</span>
-        : renewal?.renewed_at ? <span className="ig-sub">{L(`마지막 교체 ${fmtDT(renewal.renewed_at, locale)}`, `Last renewed ${fmtDT(renewal.renewed_at, locale)}`)}</span> : null}
-    </div>
-    <button type="button" className="link-btn" disabled={busy} onClick={onRemake}
-      data-tip={L("인증서가 만료됐거나 새어 나갔거나 앱 등록에서 지워졌을 때 씁니다. 새 인증서를 올릴 때까지 수집이 멈추고, 이전 인증서는 앱 등록에서 지워야 효력이 없어집니다.",
-        "For a certificate that expired, leaked or was removed from the app registration. Collection stops until the new one is uploaded, and the earlier one stops working only once it is deleted from the app registration.")}>
-      {L("새 인증서 만들기", "Make a new certificate")}</button>
-  </div>;
 }
 
 /* ---------- IAM Identity Center sign-in from the dashboard ---------- */
@@ -1357,26 +1254,6 @@ function AwsSignIn({ onDone }: { onDone: () => void }) {
     {started ? <a className="primary-btn" href={started.verification_uri_complete} target="_blank" rel="noopener noreferrer">
       <Ic name="ext" size={15} />{L("AWS에서 승인", "Approve in AWS")}</a>
       : <button type="button" className="primary-btn" disabled={busy} onClick={() => void begin()}><Ic name="key" size={15} />{L("AWS에서 로그인", "Sign in with AWS")}</button>}
-  </div>;
-}
-
-/* ---------- a signing key CreMore made ---------- */
-
-function KeyCard({ made, busy, onRemake }: { made: MadeKey; busy: boolean; onRemake: () => void }) {
-  const L = useL();
-  const locale = useLocale();
-  return <div className="ig-cert">
-    <span className="ig-cert-ic"><Ic name="key" size={18} /></span>
-    <div className="ig-cert-body">
-      <b>{L("CreMore가 만든 키", "Key CreMore made")}</b>
-      <span className="ig-sub">kid <span className="mono">{made.kid}</span></span>
-      <span className="ig-sub">{L(`${fmtDay(made.created_at, locale)}에 만듦 · 만료 없음 · 액세스 토큰은 읽을 때마다 받습니다`,
-        `Made ${fmtDay(made.created_at, locale)} · no expiry · an access token is taken for each read`)}</span>
-    </div>
-    <button type="button" className="link-btn" disabled={busy} onClick={onRemake}
-      data-tip={L("키가 새어 나갔거나 앱에서 지워졌을 때 씁니다. 새 공개 키를 붙여 넣을 때까지 수집이 멈추고, 이전 키는 Okta에서 비활성화·삭제해야 효력이 없어집니다.",
-        "For a key that leaked or was removed from the app. Collection stops until the new public key is pasted, and the earlier key stops working only once it is deactivated and deleted in Okta.")}>
-      {L("새 키 만들기", "Make a new key")}</button>
   </div>;
 }
 

@@ -19,33 +19,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The same provider roots pyproject.toml puts on the test path.
-VENDOR_PATHS = ("aws/backend", "gcp/backend", "github/backend", "gitlab/backend", "notion/backend",
-                "atlassian/backend", "azure/backend", "vault/backend", "okta/backend", "keycloak/backend",
-                "slack/backend", "website/backend", "gcp/standalone")
+# Provider roots loaded for the import cost measurement.
+VENDOR_PATHS = ("aws/backend", "github/backend", "notion/backend", "slack/backend")
 HEAVY = ("sqlalchemy", "psycopg", "fastapi", "starlette", "uvicorn", "boto3", "botocore", "google",
-         "jwt", "azure", "httpx", "re2", "pytest")
+         "jwt", "azure", "httpx", "re2")
 PLATFORM_RUNTIME = ("cremore.api", "cremore.db", "cremore.worker", "cremore.coverage.store",
                     "cremore.coverage.providers")
 TARGETS = (
     # schema 2 metadata adapters
-    "cremore_gitlab_provider.metadata.adapter", "cremore_github_provider.metadata.adapter",
-    "cremore_gcp_provider.metadata.adapter", "cremore_atlassian_provider.metadata.adapter",
-    "cremore_azure_provider.metadata.adapter", "cremore_azure_provider.entra.adapter",
-    "cremore_azure_provider.arm.adapter", "cremore_azure_provider.devops_tokens.adapter",
-    "cremore_notion_provider.metadata.adapter",
+    "cremore_github_provider.metadata.adapter", "cremore_notion_provider.metadata.adapter",
+    "cremore_slack_provider.metadata.adapter",
     # content source modules and collectors
     "cremore_aws_provider.source", "cremore_github_provider.source", "cremore_notion_provider.source",
-    "cremore_gitlab_provider.source", "cremore_gcp_provider.source",
-    "cremore_atlassian_provider.confluence_source", "cremore_atlassian_provider.bitbucket_source",
-    "cremore_azure_provider.blob_source", "cremore_azure_provider.devops_source",
     "cremore_github_provider.collectors.github", "cremore_aws_provider.collectors.s3",
-    "cremore_notion_provider.collectors.notion", "cremore_gitlab_provider.content",
-    "cremore_gcp_provider.content", "cremore_atlassian_provider.confluence_content",
-    "cremore_atlassian_provider.bitbucket_content", "cremore_azure_provider.blob_content",
-    "cremore_azure_provider.devops_content",
+    "cremore_notion_provider.collectors.notion",
     # schema 1 vault collectors
-    "cremore_aws_provider.coverage", "cremore_gcp_provider.coverage", "cremore_vault_provider.coverage",
+    "cremore_aws_provider.coverage",
     # platform contracts, registries and entry points
     "cremore.coverage.metadata_models", "cremore.coverage.collector_runtime",
     "cremore.coverage.providers", "cremore.sources.registry", "cremore.worker.worker",

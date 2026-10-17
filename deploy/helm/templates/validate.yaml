@@ -109,41 +109,6 @@
 {{- if and .Values.config.sealing.keyCiphertext (not .Values.config.sealing.kmsKeyId) -}}
 {{- fail "config.sealing.keyCiphertext requires kmsKeyId naming the CMK that opens it" -}}
 {{- end -}}
-{{- with .Values.azure.workloadIdentity -}}
-{{- if .enabled -}}
-{{- if not (regexMatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" (toString .clientId)) -}}
-{{- fail "azure.workloadIdentity.clientId must be the Entra application (client) ID" -}}
-{{- end -}}
-{{- if and .tenantId (not (regexMatch "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" (toString .tenantId))) -}}
-{{- fail "azure.workloadIdentity.tenantId must be a tenant ID" -}}
-{{- end -}}
-{{- $expiration := toString .tokenExpirationSeconds -}}
-{{- if or (not (regexMatch "^[0-9]{4,5}$" $expiration)) (lt (int $expiration) 3600) (gt (int $expiration) 86400) -}}
-{{- fail "azure.workloadIdentity.tokenExpirationSeconds must be an integer from 3600 to 86400" -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- $seen := dict -}}
-{{- range .Values.vaultConnections.tokens -}}
-{{- if not (regexMatch "^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$" (toString .name)) -}}
-{{- fail "vaultConnections.tokens[].name must be a file name (letters, digits, . _ -)" -}}
-{{- end -}}
-{{- if hasKey $seen (toString .name) -}}
-{{- fail "vaultConnections.tokens[].name must be unique" -}}
-{{- end -}}
-{{- $_ := set $seen (toString .name) true -}}
-{{- $_ := required "vaultConnections.tokens[].audience is required" .audience -}}
-{{- end -}}
-{{- $connectionExpiration := toString .Values.vaultConnections.expirationSeconds -}}
-{{- if or (not (regexMatch "^[0-9]{3,5}$" $connectionExpiration)) (lt (int $connectionExpiration) 600) (gt (int $connectionExpiration) 86400) -}}
-{{- fail "vaultConnections.expirationSeconds must be an integer from 600 to 86400" -}}
-{{- end -}}
-{{- range .Values.vaultConnections.egress -}}
-{{- $_ := required "vaultConnections.egress[].cidr is required" .cidr -}}
-{{- if or (lt (int .port) 1) (gt (int .port) 65535) -}}
-{{- fail "vaultConnections.egress[].port must be a TCP port" -}}
-{{- end -}}
-{{- end -}}
 {{- if .Values.secretStore.enabled -}}
 {{- $_ := required "secretStore.secretName is required when secretStore.enabled" .Values.secretStore.secretName -}}
 {{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$" .Values.secretStore.mount) -}}
@@ -178,7 +143,7 @@
 {{- $_ := required "internalTLS.webSecretName is required" .Values.internalTLS.webSecretName -}}
 {{- $_ := required "internalTLS.caSecretName is required" .Values.internalTLS.caSecretName -}}
 {{- $_ := required "applicationSecret.fingerprintKey is required" .Values.applicationSecret.fingerprintKey -}}
-{{- range $mode, $value := dict "schedulesMode" .Values.scanning.schedulesMode "sqs.mode" .Values.scanning.sqs.mode "pubsub.mode" .Values.scanning.pubsub.mode "serviceBus.mode" .Values.scanning.serviceBus.mode "changeFeedsMode" .Values.scanning.changeFeedsMode -}}
+{{- range $mode, $value := dict "schedulesMode" .Values.scanning.schedulesMode "sqs.mode" .Values.scanning.sqs.mode "changeFeedsMode" .Values.scanning.changeFeedsMode -}}
 {{- if not (has $value (list "disabled" "enabled")) -}}
 {{- fail (printf "scanning.%s must be disabled or enabled" $mode) -}}
 {{- end -}}

@@ -22,8 +22,6 @@ from bisect import bisect_left, bisect_right
 from dataclasses import asdict, dataclass, field
 
 from cremore_aws_provider.detection.session_material import MAX_TOKEN_BYTES, bind_sessions
-from cremore_azure_provider.sas import sas_facts as azure_sas_facts
-from cremore_gcp.linkage import service_account_key_identifiers
 from cremore_github_provider.credential_digest import token_fingerprint as github_token_fingerprint
 
 from cremore.detection import decoders as _decoders
@@ -569,16 +567,6 @@ class Engine:
                 extra["issuer_comparison"] = {"key_id": hashlib.sha256(self.config.fingerprint_key).hexdigest()}
             if keyed and spec.catalog.credential_type == "GITHUB_TOKEN":
                 extra["issuer_comparison"]["github_token_digest"] = github_token_fingerprint(secret_bytes, self.config.fingerprint_key)
-            if keyed and spec.catalog.credential_type == "GCP_SERVICE_ACCOUNT":
-                extra["issuer_comparison"]["gcp_service_account_keys"] = [
-                    value for value in service_account_key_identifiers(view, secret_bytes)
-                    if safe_fact_text(value) is not None]
-            if spec.catalog.id == "azure-sas-token-v1":
-                group = primary.pattern.group_index
-                extra["azure_sas"] = azure_sas_facts(
-                    _group_bytes(m, group("query")), account=_group_bytes(m, group("account")),
-                    service=_group_bytes(m, group("service")), before=bytes(view[max(0, m.start() - 2048):m.start()]),
-                    match=_group_bytes(m, 0))
             if spec.catalog.id == _AWS_PAIR and keyed:
                 # Component equality can link saved observations without retaining
                 # plaintext or trying candidate combinations against a provider.

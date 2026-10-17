@@ -128,7 +128,7 @@ class JobWorker:
         audit_integrity.attach(repo, settings)  # audit rows this worker writes carry its entry MAC
         self.orchestrator = orchestrator or Orchestrator(repo)
         self.service = ScanService(self.orchestrator)
-        self.collector_factory = collector_factory or (lambda job: build_collector(job, domain_cover=self._domain_cover))
+        self.collector_factory = collector_factory or (lambda job: build_collector(job))
         self._verify = verify
         self.credential_checker = credential_checker
         self.secret_scanning_reader = secret_scanning_reader
@@ -186,12 +186,6 @@ class JobWorker:
             return base
         from cremore.scanning import scan_switches
         return scan_switches.verify_config_for(base, self.settings, self.repo)
-
-    def _domain_cover(self, host: str) -> dict | None:
-        """The verified company domain covering ``host`` now: what a website scan may read (cremore.domains)."""
-        from cremore import domains
-
-        return domains.covering(self.repo, host, _dt.datetime.now(_dt.UTC))
 
     def aws_identity(self, *, refresh: bool = False, state: dict | None = None) -> dict | None:
         """The AWS identity of this worker process, reported for the API to compare."""
@@ -477,10 +471,7 @@ class JobWorker:
         if self.execution_role in ("control", "remediator"):
             self._poll_dedicated()
             return
-        from cremore.coverage.aws_scheduling import (
-            poll_aws_inventory_schedules,
-            poll_server_vault_schedules,
-        )
+        from cremore.coverage.aws_scheduling import poll_aws_inventory_schedules
         from cremore.coverage.scheduling import poll_metadata_schedules
         from cremore.scanning.changes import poll_change_feeds
         from cremore.scanning.rescore import RescoreService
@@ -489,7 +480,6 @@ class JobWorker:
         for poll in (
             lambda: poll_schedules(self.repo, self.settings),
             lambda: poll_metadata_schedules(self.repo, self.settings),
-            lambda: poll_server_vault_schedules(self.repo, self.settings),
             lambda: poll_resumable(self.repo, self.settings),
             lambda: (
                 poll_sqs(self.repo, self.settings, self.sqs_client_factory)
@@ -545,14 +535,6 @@ class JobWorker:
             except Exception as exc:  # noqa: BLE001 -- the next slot queues them again
                 logger.warning("finding context sweep failed: %s", type(exc).__name__)
             try:
-                from cremore.onboarding import renewal
-
-                # Credentials CreMore made (a Microsoft app certificate) are renewed before they expire.
-                renewal.sweep(self.repo, self.settings, self.metadata_secret_resolver, self.http_client_factory,
-                              **({"execution_role": self.execution_role} if self.execution_role != "mixed" else {}))
-            except Exception as exc:  # noqa: BLE001 -- the next slot tries again
-                logger.warning("credential renewal sweep failed: %s", type(exc).__name__)
-            try:
                 from cremore.identity import sign_in_groups
 
                 # Who is in the groups that give console roles to people who sign in with Google, every few minutes.
@@ -596,14 +578,6 @@ class JobWorker:
                     provider_actions.settle(self.repo, self.settings)
             except Exception as exc:  # noqa: BLE001 -- the next tick looks again
                 logger.warning("provider plan settle sweep failed: %s", type(exc).__name__)
-            try:
-                from cremore import domains
-
-                # The company's domains, asked again a day after their last answer: a few a tick, so a slow DNS
-                # never holds the scans back for long.
-                domains.reverify_due(self.repo, self.settings, _dt.datetime.now(_dt.UTC), limit=5)
-            except Exception as exc:  # noqa: BLE001 -- asked again on the next tick
-                logger.warning("domain re-verification failed: %s", type(exc).__name__)
             try:
                 from cremore.onboarding import check as onboarding_check
 
@@ -1056,13 +1030,10 @@ class JobWorker:
                                                      orchestrator=self.orchestrator))
             calls.append(lambda: response_threads.sweep(self.repo, self.settings))
         else:
-            from cremore.onboarding import renewal
             from cremore.remediation import provider_actions
             calls.extend((lambda: self.aws_identity(refresh=True),
                           lambda: self.queue_stale_validations(),
-                          lambda: provider_actions.settle(self.repo, self.settings),
-                          lambda: renewal.sweep(self.repo, self.settings, self.metadata_secret_resolver,
-                                                self.http_client_factory, execution_role="remediator")))
+                          lambda: provider_actions.settle(self.repo, self.settings)))
         for call in calls:
             try:
                 call()

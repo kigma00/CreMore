@@ -64,8 +64,7 @@ CLOCK_SKEW = timedelta(seconds=60)
 # (the last run's start less the runtime's overlap) less this look-back (_read_page).
 LOOKBACK = SEARCH_LAG + EDIT_ROUNDING + CLOCK_SKEW
 # Search metadata older than this never decides that a page is unchanged (_fresh). The
-# arithmetic in _fresh needs it no longer than the runtime's overlap
-# (cremore/scanning/changes_test.py keeps the two consistent).
+# arithmetic in _fresh needs it no longer than the runtime's overlap.
 META_FRESH = timedelta(minutes=5)
 # An observed_at this far ahead of our clock comes from a broken clock, not a fresh walk.
 _AHEAD = timedelta(seconds=30)

@@ -10,7 +10,7 @@ import { useLocale } from "@/components/locale";
 import { reasonText, send, useApi, useSaved } from "@/console/data";
 import { Ic, type IconName } from "@/console/icons";
 import { Menu, MenuItem, MenuLabel, MenuSep, Modal, useMenu, useToast } from "@/console/layer";
-import { Logo, markOf } from "@/console/logos";
+import { Logo } from "@/console/logos";
 import { RECORDS_PATH, type RecordsResponse } from "@/console/records";
 import type { ViewProps } from "@/console/shell";
 import { fmtDT, rel, useL } from "@/console/text";
@@ -20,7 +20,7 @@ import { capName, CUSTOMER_SIDE, description, methodShort } from "@/console/view
 import {
   type Catalog, type CollectionEntry, forCollectionEntry, CATALOG_PATH, CONNECTIONS_PATH, type Descriptor, type Health, HEALTH_PATH, healthOf,
   enabledPurposes, inEntryView, inventoryCount, label, lastRun, onboardingText, peopleDirectoryBlock, type ProviderConnection, type Purpose, PURPOSE_ORDER,
-  rowState, scanEntryOf, sharedFix, sharedNote, shortName, type Suggestion, SUGGESTIONS_PATH, suggestionText,
+  rowState, scanEntryOf, sharedFix, sharedNote, shortName,
 } from "@/console/views/integrations/model";
 import {
   accountFeatures, accountNote, accountOwner, badges, CONNECTION_FIXES, contentOwner, contentStartable, live, liveIn, sectionCounts,
@@ -32,22 +32,15 @@ import { enterpriseReady, GitHubEnterpriseModal } from "@/console/views/integrat
 import { type ContactChannels, ContactDeliveryModal, contactState } from "@/console/views/integrations/contact-delivery";
 import { TicketSystemModal, ticketState, type TicketSystemStatus } from "@/console/views/integrations/ticket-system";
 import { type ResponseChannelOption, ResponseChannelsModal, responseChannelsState } from "@/console/views/integrations/response-channels";
-import { DOMAIN_STATUS_PATH, type DomainList, DomainsModal, domainState } from "@/console/views/integrations/domains";
 import { ReachModal, reachKind } from "@/console/views/integrations/reach";
 import { TargetsModal } from "@/console/views/integrations/targets";
 import { collectConnection } from "@/console/views/integrations/collect";
 import { ConnectWizard, type WizardOpen } from "@/console/views/integrations/wizard";
 
-type Category = "all" | "code" | "cloud" | "saas" | "detect";
-// The catalog's categories on this screen; vault and identity providers are reached from the side cards.
+type Category = "all" | "code" | "cloud" | "saas";
 const SHOWN: Category[] = ["code", "cloud", "saas"];
 const CAP_ICON: Record<Purpose, IconName> = { inventory: "key", exposure: "scan", vault: "vault", identity: "users", remediation: "shield" };
 const CAP_CLASS: Record<Purpose, string> = { inventory: "inv", exposure: "scan", vault: "vault", identity: "idp", remediation: "act" };
-// Detection-only services the design shows as cards; the rest are counted on the last card.
-const DETECT_CARDS = ["slack", "stripe", "sentry"];
-const NOT_A_SERVICE = new Set(["generic", "database"]);
-
-type Engine = { detectors: { provider: string; enabled: boolean }[] };
 type Siem = { destinations: { destination: string }[]; exporter_active: boolean };
 
 export function Integrations({ session, route, go, setParams, can }: ViewProps) {
@@ -60,7 +53,6 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
   const connections = useApi<ProviderConnection[]>(CONNECTIONS_PATH, { every: fast ? 5_000 : 30_000 });
   const health = useApi<Health>(HEALTH_PATH, { every: 60_000 });
   const records = useApi<RecordsResponse>(RECORDS_PATH, { every: 60_000 });
-  const engine = useApi<Engine>("detection-engine");
   const siem = useApi<Siem>(session.role === "Admin" ? "siem/status" : null);
   const [cat, setCat] = useState<Category>("all");
   const [wizard, setWizard] = useState<WizardOpen | null>(null);
@@ -75,9 +67,6 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
   const tickets = useApi<TicketSystemStatus>(session.role === "Viewer" ? null : "ticket-system");
   const [channelsOpen, setChannelsOpen] = useState(false);
   const responseChannels = useApi<{ channels: ResponseChannelOption[] }>(session.role === "Viewer" ? null : "response-channels");
-  const [domainsOpen, setDomainsOpen] = useState(false);
-  const domainList = useApi<DomainList>(session.role === "Viewer" ? null : DOMAIN_STATUS_PATH);
-  const suggested = useApi<{ items: Suggestion[] }>(session.role === "Admin" ? SUGGESTIONS_PATH : null);
   const [confirm, setConfirm] = useState<{ c: ProviderConnection; action: "disable" | "delete" } | null>(null);
   const [renaming, setRenaming] = useState<ProviderConnection | null>(null);
   const [menuFor, setMenuFor] = useState<{ c: ProviderConnection; entry: CollectionEntry } | null>(null);
@@ -104,7 +93,7 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
   // Links into this screen: ?connect=<provider>, ?edit=<connection>&step=2, and the Google return. ``entry``
   // (account | exposure) keeps a link's flow on its side, as a provider's return page sends it back.
   useEffect(() => {
-    const oauth = route.params.get("gcp_oauth"), editing = route.params.get("edit"), connect = route.params.get("connect");
+    const editing = route.params.get("edit"), connect = route.params.get("connect");
     const asked = route.params.get("entry");
     const entry: CollectionEntry | undefined = asked === "account" || asked === "exposure" ? asked : undefined;
     // An account found by search opens the integration that reaches it.
@@ -114,15 +103,14 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
       setParams({ account: null });
       if (owner) { setWizard({ id: owner.id }); return; }
     }
-    if (oauth) { setWizard({ oauth }); setParams({ gcp_oauth: null }); }
-    else if (editing) {
+    if (editing) {
       const step = Number(route.params.get("step"));
       setWizard({ id: editing, ...(step === 1 || step === 2 || step === 3 ? { step } : {}), ...(entry ? { entry } : {}) });
       setParams({ edit: null, step: null, entry: null });
     } else if (connect) {
       if (!catalog.data) return; // the link is followed once the catalog says what replaced what
       const purpose = route.params.get("purpose");
-      if (purpose === "exposure" && connect !== "website" && !entry) {
+      if (purpose === "exposure" && !entry) {
         // Content starts from an existing owner, including when reached by an old deep link.
         setParams({ connect: null, purpose: null });
         document.getElementById("ig-content")?.scrollIntoView({ behavior: "smooth" });
@@ -131,8 +119,9 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
         return;
       }
       // A link to a replaced provider opens the one that replaced it, with the same feature.
-      const replaced = catalog.data.providers.find(d => d.provider === connect)?.replaced_by;
-      setWizard({ provider: replaced ?? connect, ...(entry ? { entry } : {}),
+      const selected = catalog.data.providers.find(d => d.provider === connect);
+      if (!selected || selected.replaced_by) { setParams({ connect: null, purpose: null, entry: null }); return; }
+      setWizard({ provider: selected.provider, ...(entry ? { entry } : {}),
         ...(purpose ? { purpose } : entry === "exposure" ? { purpose: "exposure" } : {}) });
       setParams({ connect: null, purpose: null, entry: null });
     }
@@ -140,10 +129,9 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
 
   const providers = useMemo(() => new Map((catalog.data?.providers ?? []).map(d => [d.provider, d])), [catalog.data]);
   // What a new connection is made with: a provider another replaced (Entra ID people -> Microsoft) is not offered.
-  // A provider started elsewhere (websites, from the domain screen) is not a card of the grid.
   const offered = useMemo(() => (catalog.data?.providers ?? []).filter(d => !d.replaced_by && !d.entry && d.auth_methods.some(m => m.new_setup !== false)), [catalog.data]);
   const order = useMemo(() => (catalog.data?.providers ?? []).map(d => d.provider), [catalog.data]);
-  const list = useMemo(() => [...(connections.data ?? [])].sort((a, b) =>
+  const list = useMemo(() => [...(connections.data ?? [])].filter(c => order.includes(c.provider)).sort((a, b) =>
     (order.indexOf(a.provider) - order.indexOf(b.provider)) || a.name.localeCompare(b.name)), [connections.data, order]);
   const items = records.data?.items;
   const healthItems = health.data?.items;
@@ -161,9 +149,6 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
   const scanPlaces = list.filter(c => c.status === "ACTIVE" && c.feature_enabled?.exposure !== false).reduce((sum, c) => sum + (scopes.get(c.id)?.count ?? 0), 0);
   const newest = lastRun(list.flatMap(c => healthOf(c, healthItems)));
   const byProvider = (provider: string) => list.filter(c => c.provider === provider);
-  // The domains a website integration already scans; a new one starts with the others.
-  const scannedDomains = new Set(byProvider("website").flatMap(c => (Array.isArray(c.target.domains) ? c.target.domains : [])
-    .filter((name): name is string => typeof name === "string")));
 
   const openConnect = (provider: string, entry?: CollectionEntry) => setWizard({ provider, entry, ...(entry === "exposure" ? { purpose: "exposure" } : {}) });
   const openChooser = (element: HTMLElement, title: string, ids: string[], people = false, entry?: CollectionEntry) => { setChooser({ title, providers: ids, people, entry }); chooserMenu.open(element); };
@@ -313,34 +298,9 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
 
   /* ---------- available services ---------- */
 
-  const detectProviders = [...new Set((engine.data?.detectors ?? []).map(item => item.provider))]
-    .filter(provider => !providers.has(provider) && !NOT_A_SERVICE.has(provider));
-  const detectCards = DETECT_CARDS.filter(provider => detectProviders.includes(provider));
-  const detectRest = detectProviders.filter(provider => !detectCards.includes(provider)).length;
-  const catName: Record<Category, string> = { all: L("전체", "All"), code: L("코드 저장소", "Code hosting"), cloud: L("클라우드", "Cloud"), saas: L("협업 도구", "Collaboration"), detect: L("노출 탐지만 지원", "Detection only") };
-  const groups = (["code", "cloud", "saas", "detect"] as Category[]).filter(group => cat === "all" || cat === group).map(group => {
-    if (group === "detect") {
-      if (!detectCards.length && !detectRest) return null;
-      return <div className="ig-group" key={group}>
-        <div className="ig-group-title">{catName.detect} <span className="info-dot" tabIndex={0} role="img" aria-label={L("노출 검사에서 이 서비스들의 키를 찾습니다. 발급 목록·만료일·소유자는 연동하는 서비스에서만 가져옵니다.", "Exposure scans find these services' keys. Inventory, expiry and owners come only from connected services.")}
-          data-tip={L("노출 검사에서 이 서비스들의 키를 찾습니다. 발급 목록·만료일·소유자는 연동하는 서비스에서만 가져옵니다.", "Exposure scans find these services' keys. Inventory, expiry and owners come only from connected services.")}><Ic name="info" size={15} /></span></div>
-        <div className="ig-grid">
-          {detectCards.map(provider => <button type="button" key={provider} className="ig-card detect"
-            onClick={() => toast(L(`${markOf(provider)?.name ?? provider} 키는 노출 검사에서 찾습니다. 발급 목록 연동은 지원하지 않습니다.`, `${markOf(provider)?.name ?? provider} keys are found by exposure scans. Inventory integration is not offered.`))}>
-            <span className="ig-card-top"><Logo id={provider} size={36} /><span className="ig-card-name">{markOf(provider)?.name ?? provider}</span><span className="ig-badge soon">{L("탐지 룰", "Rules")}</span></span>
-            <span className="ig-card-desc">{L("노출된 키를 찾는 탐지 룰이 적용돼 있습니다.", "Detection rules for exposed keys are active.")}</span>
-            <span className="ig-caps"><span className="cap det"><Ic name="shield" size={14} /><span className="clip">{L("노출 탐지 룰", "Detection rules")}</span></span></span>
-          </button>)}
-          {detectRest ? <button type="button" className="ig-card detect" onClick={() => (can("rules") ? go("rules") : toast(L(`그 밖의 ${detectRest}개 서비스 키도 노출 검사에서 찾습니다.`, `Keys of ${detectRest} more services are also found by exposure scans.`)))}>
-            <span className="ig-card-top"><span className="conn-ic"><Ic name="sliders" size={18} /></span><span className="ig-card-name">{L(`그 밖의 서비스 ${detectRest}개`, `${detectRest} more services`)}</span></span>
-            <span className="ig-card-desc">{L("AI·결제·메시징·패키지 레지스트리 등의 키를 탐지 룰로 찾습니다.", "Detection rules find keys for AI, payment, messaging, package registries and more.")}</span>
-            {can("rules") ? <span className="ig-card-cta">{L("탐지 룰 보기", "View detection rules")}<Ic name="right" size={15} /></span> : null}
-          </button> : null}
-        </div>
-      </div>;
-    }
-    // A provider whose new setups offer no account feature (Confluence) is reached from its content card only.
-    const cards = pageProviders.filter(d => d.category === group && d.provider !== "website" && accountFeatures(d).length);
+  const catName: Record<Category, string> = { all: L("전체", "All"), code: L("코드 저장소", "Code hosting"), cloud: L("클라우드", "Cloud"), saas: L("협업 도구", "Collaboration") };
+  const groups = (["code", "cloud", "saas"] as Category[]).filter(group => cat === "all" || cat === group).map(group => {
+    const cards = pageProviders.filter(d => d.category === group && accountFeatures(d).length);
     if (!cards.length) return null;
     return <div className="ig-group" key={group}>
       <div className="ig-group-title">{catName[group]}</div>
@@ -354,21 +314,13 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
       })}</div>
     </div>;
   });
-  // Apps the company IdP (Microsoft Entra) already lists, for services with no connection yet: a nudge, from stored inventory.
-  const suggestions = (suggested.data?.items ?? []).filter(item => providers.has(item.provider) && !byProvider(item.provider).length);
   const catalogSection = <section className="ig-catalog">
     <div className="ig-sec-head"><h2>{L("계정·발급 목록 연결", "Account and inventory connections")}</h2>
       <span className="meta">{L("계정 연결만으로 콘텐츠 검사를 시작하지 않습니다", "Connecting an account does not start content scanning")}</span></div>
-    {suggestions.length ? <div className="ig-suggest" role="note">
-      <span className="ig-suggest-title"><Ic name="users" size={16} />{L("회사 IdP에 이미 있는 서비스", "Services your company IdP already has")}</span>
-      <div className="pill-wrap">{suggestions.map(item => <button type="button" className="ghost-btn" key={item.provider} data-tip={suggestionText(item, L)}
-        aria-label={`${L(`${label(providers.get(item.provider)!, L)} 연동`, `Connect ${label(providers.get(item.provider)!, L)}`)} · ${suggestionText(item, L)}`}
-        onClick={() => openConnect(item.provider)}><Logo id={item.provider} size={18} />{L(`${label(providers.get(item.provider)!, L)} 연동`, `Connect ${label(providers.get(item.provider)!, L)}`)}</button>)}</div>
-    </div> : null}
     <Seg className="ig-seg" label={L("분류", "Category")} value={cat} onChange={setCat}
-      options={(["all", ...SHOWN, "detect"] as Category[]).map(id => ({ id, label: catName[id] }))} />
+      options={(["all", ...SHOWN] as Category[]).map(id => ({ id, label: catName[id] }))} />
     {groups}
-    {cat !== "detect" ? <div className="ig-group" id="ig-content">
+    <div className="ig-group" id="ig-content">
       <div className="ig-sec-head"><h2>{L("콘텐츠 검사 위치 연결", "Content scan connections")}</h2>
         <span className="meta">{L("버킷·저장소·페이지의 읽기 권한과 검사 범위를 확인합니다. 연결된 계정이 있으면 그 신원을 다시 씁니다", "Check read access and select buckets, repositories or pages, reusing a connected account where there is one")}</span></div>
       <div className="ig-grid">{pageProviders.filter(d => d.purposes.exposure && (cat === "all" || d.category === cat)).map(d => {
@@ -381,57 +333,19 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
           onOpen={element => own.length > 1 ? openChooser(element, entryName.title, [d.provider], false, "exposure")
             : own.length ? openExisting(own[0], "exposure") : openConnect(d.provider, "exposure")} />;
       })}</div>
-    </div> : null}
+    </div>
   </section>;
 
   /* ---------- side cards ---------- */
 
-  const vaultProviders = pageProviders.filter(d => d.category === "vault");
-  const vaultRows = list.filter(c => providers.get(c.provider)?.category === "vault");
-  const vaultConnections = vaultRows.filter(c => c.status === "ACTIVE" && enabledPurposes(c).length).length;
-  const vault = <Card className="ig-side" headClass="wrap" title={L("Secret 저장소", "Secret stores")}
-    right={can("vaults") ? <button type="button" className="link-btn" onClick={() => go("vaults")}>{L("Secret 저장소로", "Go to Secret stores")} <Ic name="right" size={15} /></button> : undefined}>
-    <div className="card-body"><div className="ig-side-row">
-      <div className="logo-row">{vaultProviders.map(d => <Logo key={d.provider} id={d.provider} size={28} tip={label(d, L)} />)}<Logo id="awssm" size={28} /><Logo id="gcp" size={28} tip="GCP Secret Manager" /></div>
-      <p className="ig-side-text">{L("노출된 값이 금고에 보관돼 있는지 지문으로 대조합니다. AWS·GCP·Azure·GitHub·GitLab의 비밀 저장소는 그 서비스 연동에서 함께 고릅니다.", "Checks by fingerprint whether an exposed value is kept in a vault. The secret stores of AWS, GCP, Azure, GitHub and GitLab are chosen in that service's integration.")}</p>
-    </div>
-      {vaultRows.slice(0, 3).map(c => {
-        const d = providers.get(c.provider);
-        const state = states.get(c.id)!;
-        return <button type="button" key={c.id} className="ig-other" onClick={() => setWizard({ id: c.id })}>
-          <Logo id={c.provider} size={34} />
-          <span className="ig-other-text"><b>{shortName(d, c) || (d ? label(d, L) : c.name)}</b><span className="ig-sub">{d ? label(d, L) : c.provider}</span></span>
-          <span className={cls("igs", state.tone)}><span className="dot" />{state.label}</span><Ic name="right" size={16} />
-        </button>;
-      })}
-      {vaultRows.length > 3 ? <p className="ig-sub ig-side-more">{L(`그 밖에 ${vaultRows.length - 3}곳`, `${vaultRows.length - 3} more`)}</p> : null}
-      <div className="ig-side-foot">
-        <span className="ig-sub">{vaultConnections ? L(`금고 ${vaultConnections}곳 연동`, `${vaultConnections} vault${vaultConnections === 1 ? "" : "s"} connected`) : L("연동한 금고 없음", "No vault connected")}</span>
-        <button type="button" className="link-btn" onClick={event => openChooser(event.currentTarget, L("금고 연동", "Connect a vault"), vaultProviders.map(d => d.provider))}><Ic name="plus" size={15} />{L("금고 연동하기", "Connect a vault")}</button>
-      </div>
-    </div>
-  </Card>;
-
-  // Directories: the identity providers, those whose connection also reads people, and a replaced one while
-  // a connection of it still runs.
-  const idpProviders = [...pageProviders.filter(d => d.category === "identity").map(d => d.provider),
-    ...pageProviders.filter(d => d.category !== "identity" && d.purposes.identity).map(d => d.provider),
-    ...catalog.data.providers.filter(d => d.replaced_by && d.purposes.identity && byProvider(d.provider).length).map(d => d.provider)];
-  const idpConnected = list.filter(c => c.status === "ACTIVE" && c.plans.identity && c.feature_enabled?.identity !== false).length;
   const authMode = (session as typeof session & { auth_mode?: string }).auth_mode;
   const siemCount = siem.data?.destinations.length ?? 0;
   const others: { icon: IconName; title: string; text: string; state: string; on: (element: HTMLElement) => void }[] = [
     { icon: "shield", title: L("CreMore 로그인", "CreMore sign-in"), text: L("직원이 회사 계정(IdP)으로 CreMore에 로그인합니다.", "Staff sign in to CreMore with their company account (IdP)."),
       state: authMode === "oidc" ? L("IdP 로그인 사용 중", "IdP sign-in on") : L("로컬 로그인", "Local sign-in"),
       on: () => (can("settings") ? go("settings", { section: "login" }) : toast(L("로그인 방식은 설치 설정(CREMORE_AUTH_MODE)에서 정합니다.", "The sign-in mode is set in the installation's configuration (CREMORE_AUTH_MODE)."))) },
-    { icon: "users", title: L("디렉터리 동기화", "Directory sync"), text: L("사람의 계정 상태를 가져와 퇴사자가 만든 Credential을 찾습니다.", "Imports people's account state to find credentials made by people who left."),
-      state: idpConnected ? L(`${idpConnected}곳 연동`, `${idpConnected} connected`) : L("설정 안 됨", "Not set up"),
-      on: element => openChooser(element, L("디렉터리 연동", "Connect a directory"), idpProviders, true) },
-    { icon: "globe", title: L("도메인 검증", "Domain verification"), text: L("외부 노출 검사 대상 도메인을 소유했는지 확인합니다.", "Confirms you own the domains used for external exposure checks."),
-      state: domainState(domainList.data, L),
-      on: () => (session.role === "Admin" ? setDomainsOpen(true) : toast(L("도메인 검증은 관리자가 설정합니다.", "An admin sets up domain verification."))) },
     { icon: "key", title: L("기계 신원 (회사 IdP)", "Machine identity (company IdP)"),
-      text: L("CreMore가 AWS·GCP·Azure·Vault에 회사 IdP의 기계 토큰으로 접근합니다.", "CreMore reaches AWS, GCP, Azure and Vault with the company IdP's machine token."),
+      text: L("CreMore가 AWS에 회사 IdP의 기계 토큰으로 접근합니다.", "CreMore reaches AWS with the company IdP's machine token."),
       state: machineState(machine.data, L), on: () => setMachineOpen(true) },
     { icon: "webhook", title: L("SIEM 전송 · 전체 서비스 공통", "SIEM delivery · all services"), text: L("한 번 설정하면 현재와 새로 연결하는 모든 SaaS·클라우드의 CreMore 이벤트를 보냅니다.", "Configure once to send CreMore events for every current and future SaaS and cloud connection."),
       state: siemCount ? L(`${siemCount}곳으로 전송`, `${siemCount} destination${siemCount === 1 ? "" : "s"}`) : L("설정 안 됨", "Not set up"),
@@ -507,7 +421,7 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
     {tiles}
     {conn}
     {catalogSection}
-    <div className="ig-side-grid">{vault}{other}</div>
+    <div className="ig-side-grid">{other}</div>
     {rowMenuNode}
     {chooserNode}
     {wizard ? <ConnectWizard key={JSON.stringify(wizard)} catalog={catalog.data} open={wizard} onClose={() => { setWizard(null); connections.reload(); }} go={go} can={can} admin={session.role === "Admin"}
@@ -518,12 +432,6 @@ export function Integrations({ session, route, go, setParams, can }: ViewProps) 
     {contactOpen ? <ContactDeliveryModal onClose={() => { setContactOpen(false); delivery.reload(); }} /> : null}
     {channelsOpen ? <ResponseChannelsModal onClose={() => { setChannelsOpen(false); responseChannels.reload(); }} /> : null}
     {ticketOpen ? <TicketSystemModal onClose={() => { setTicketOpen(false); tickets.reload(); }} /> : null}
-    {domainsOpen ? <DomainsModal scans={byProvider("website").length} scanned={scannedDomains}
-      onClose={() => { setDomainsOpen(false); domainList.reload(); }}
-      onConnect={fresh => {
-        // A new scan starts with the verified domains no scan reads yet; the wizard's check asks the DNS state again.
-        setDomainsOpen(false); domainList.reload(); setWizard({ provider: "website", target: { domains: fresh.join("\n") } });
-      }} /> : null}
     {targetsFor ? <TargetsModal conn={targetsFor} onClose={() => { setTargetsFor(null); connections.reload(); }} go={go} can={can} /> : null}
     {enterpriseFor ? <GitHubEnterpriseModal conn={enterpriseFor} onClose={() => { setEnterpriseFor(null); connections.reload(); }} /> : null}
     {reachFor ? <ReachModal conn={reachFor} onClose={() => setReachFor(null)} /> : null}

@@ -72,10 +72,6 @@ spec:
   egress: {{ include "cremore.isolatedEgress" (dict "root" . "component" "worker") | nindent 4 }}
   {{- else }}
   egress: {{ include "cremore.backendEgress" . | nindent 4 }}
-    {{- range .Values.vaultConnections.egress }}
-    - to: [{ ipBlock: { cidr: {{ .cidr | quote }} } }]
-      ports: [{ protocol: TCP, port: {{ .port | int }} }]
-    {{- end }}
   {{- end }}
 {{- if .Values.isolation.enabled }}
 {{- range $name := list "control" "remediator" }}

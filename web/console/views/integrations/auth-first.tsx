@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDisplayTimezone } from "@/components/display-timezone";
-import { useLocale } from "@/components/locale";
-import { completeDraftSignIn, pending, startSignIn } from "@/console/gcp-oauth";
 import { reasonText as apiReasonText, send, useApi, useSaved } from "@/console/data";
 import { Ic } from "@/console/icons";
 import { Modal, useToast } from "@/console/layer";
@@ -15,7 +13,6 @@ import { CredentialField, FieldGrid } from "@/console/views/integrations/fields"
 import { defaultRoot, defaultText, FULL_SCHEDULES, fullScanText, INSTALLATION_DEFAULT, pickable, rootProblem } from "@/console/views/integrations/targets-model";
 import { guideSteps, SetupGuide } from "@/console/views/integrations/guide";
 import { startGitHubApp } from "@/console/views/integrations/github-app";
-import { type GoogleClient, GoogleClientSetup } from "@/console/views/integrations/google-client";
 import { setupGroups, type SetupGroup } from "@/console/views/integrations/setup";
 import { featureOutcomes, type Blocker, type Missing } from "@/console/views/integrations/outcomes";
 import { MissingList, PermissionPreview, type PreviewTarget } from "@/console/views/integrations/permissions-preview";
@@ -98,8 +95,8 @@ export function ReduceTargets({ connection, descriptor, disabled, onSaved }: {
   </div>;
 }
 
-export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true, resumeOauth, existing, initialTarget, initialPurposes, initialMethod, initialEdition, supplemental, authenticationOnly: accountOnly = false, entry, progress, onIntent, onSelection, onDeferred, onComplete, onClose, onAdvanced }: {
-  descriptor: Descriptor; admin: boolean; resumeOauth?: string; existing?: ProviderConnection; initialTarget?: Record<string, unknown>; onClose: () => void; onAdvanced: (method: string, edition: string) => void;
+export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true, existing, initialTarget, initialPurposes, initialMethod, initialEdition, supplemental, authenticationOnly: accountOnly = false, entry, progress, onIntent, onSelection, onDeferred, onComplete, onClose, onAdvanced }: {
+  descriptor: Descriptor; admin: boolean; existing?: ProviderConnection; initialTarget?: Record<string, unknown>; onClose: () => void; onAdvanced: (method: string, edition: string) => void;
   authenticationOnly?: boolean;
   /** The card it was opened from: a content-scan card ("exposure") never asks which features to use. */
   entry?: CollectionEntry;
@@ -111,7 +108,6 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
   schedulesAllowed?: boolean;
 }) {
   const L = useL();
-  const locale = useLocale();
   const zone = useDisplayTimezone();
   const saved = useSaved();
   const toast = useToast();
@@ -120,8 +116,8 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
   const editions = d.editions.filter(e => (e.new_setup !== false || existing?.edition === e.id) && methodsFor(d, [], e.id, existing?.auth_method).length);
   const [edition, setEdition] = useState(initialEdition ?? existing?.edition ?? editions[0].id);
   const methods = methodsFor(d, supplemental ? initialPurposes ?? [] : [], edition, existing?.auth_method);
-  const [methodId, setMethod] = useState(initialMethod ?? (resumeOauth ? "google_oauth"
-    : methodsFor(d, initialPurposes ?? [], edition).find(m => m.auth_first)?.id ?? methods.find(m => m.auth_first)?.id ?? methods[0].id));
+  const [methodId, setMethod] = useState(initialMethod ??
+    methodsFor(d, initialPurposes ?? [], edition).find(m => m.auth_first)?.id ?? methods.find(m => m.auth_first)?.id ?? methods[0].id);
   const method = methods.find(m => m.id === methodId) ?? methods[0];
   const authenticationOnly = accountOnly || method.authentication_only === true;
   // Opened from a content-scan card: the scan is the only feature chosen here, so no feature step is shown.
@@ -175,20 +171,15 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
   const [advancingCheck, setAdvancingCheck] = useState(false);
   const [pollRetry, setPollRetry] = useState(0);
   const live = useRef(true);
-  const [browserKey] = useState(() => (resumeOauth ? pending()?.browser_key : undefined)
-    ?? remembered?.key
+  const [browserKey] = useState(() => remembered?.key
     ?? Array.from(crypto.getRandomValues(new Uint8Array(32)), n => n.toString(16).padStart(2, "0")).join(""));
   const appSetup = d.provider === "github" && method.id === "github_app" && !manualApp;
-  const googleOAuth = method.flow === "gcp_oauth";
-  const googleClient = useApi<GoogleClient>(googleOAuth && step === 1 ? "v2/gcp/oauth/status" : null, { every: 0 });
-  const [editGoogleClient, setEditGoogleClient] = useState(false);
   const contextFields = (d.target ?? []).filter(f => method.auth_first?.context.includes(f.name) && (!f.editions || f.editions.includes(edition)));
   const registrationFields = (d.target ?? []).filter(f => (method.auth_first?.context.includes(f.name) || f.name === "organization")
     && (!f.editions || f.editions.includes(edition)));
   const config = JSON.stringify([edition, method.id, payload(contextFields, context)]);
   const reusable = Boolean(draft && authConfig === config && !credentialsChanged && Date.parse(draft.expires_at) > Date.now()
     && !["CANCELLED", "EXPIRED", "COMPLETED"].includes(draft.state));
-  const googleReady = !googleOAuth || (reusable && draft?.authentication?.status === "GRANTED") || googleClient.data?.configured === true;
   const missingAuthField = missingRequired(appSetup && !reusable ? registrationFields : contextFields, context);
   const shownFields = (appSetup && !reusable ? registrationFields : contextFields).filter(f => !f.product);
   // The App's start button sits right under the organization it is made for.
@@ -286,7 +277,7 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
   const heldPurposes = draft?.held_purposes ?? [];
   const canAddHeld = d.provider !== "aws"; // sessions.edit: an AWS owner adds features in its settings, not here
   const working = busy || draft?.state === "WORKING";
-  const authDisabled = working || idBlocked || !googleReady || (googleOAuth && editGoogleClient) || !method.auth_first || Boolean(missingAuthField)
+  const authDisabled = working || idBlocked || !method.auth_first || Boolean(missingAuthField)
     || (!appSetup && !reusable && (method.fields ?? []).some(f => !f.optional && !credential[f.name]?.trim()));
   const investigationOptions = awsIdentity && admin ? investigationKeys(purposes) : [];
 
@@ -339,7 +330,7 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
   }
   const reading = useRef<Promise<Draft> | null>(null);
   useEffect(() => {
-    if (!remembered || resumeOauth) return;
+    if (!remembered) return;
     let cancelled = false;
     reading.current ??= send<Draft>(`${BASE}/${remembered.id}/read`, "POST", { browser_key: browserKey });
     void reading.current.then(next => {
@@ -350,10 +341,8 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
     }).catch(reason => { if (!cancelled) { forgetDraft(storageKey); setError(reasonText(reason, L)); } });
     return () => { cancelled = true; };
   }, []); // The server, not browser storage, supplies the resumed choices and access evidence.
-  const resuming = useRef<Promise<string> | null>(null);
   const editing = useRef<Promise<Draft> | null>(null);
   const editRestored = useRef(false);
-  const oauthRestored = useRef(false);
   const initializedPlans = useRef(false);
   const initializedTargets = useRef(false);
   useEffect(() => {
@@ -371,15 +360,6 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
     }).catch(reason => { if (!cancelled) setError(reasonText(reason, L)); });
     return () => { cancelled = true; };
   }, [existing, browserKey, d, L]);
-  useEffect(() => {
-    if (!resumeOauth || oauthRestored.current) return;
-    let cancelled = false;
-    resuming.current ??= completeDraftSignIn(resumeOauth);
-    void resuming.current.then(id => send<Draft>(`${BASE}/${id}/read`, "POST", { browser_key: browserKey })).then(next => {
-      if (!cancelled && !oauthRestored.current) { oauthRestored.current = true; restore(next); }
-    }).catch(reason => { if (!cancelled) setError(reasonText(reason, L)); });
-    return () => { cancelled = true; };
-  }, [resumeOauth, browserKey, L]);
   useEffect(() => {
     if (draft?.state !== "WORKING") return;
     let cancelled = false;
@@ -459,9 +439,6 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
       }
       // A new identity approval invalidates the revision bound to an earlier AWS draft.
       if (reusable && !approving) {
-        if (method.flow === "gcp_oauth" && draft?.state === "AWAITING_OAUTH") {
-          await startSignIn(draft.id, locale, browserKey); return;
-        }
         if (draft?.authentication?.status === "GRANTED") { setStep(contentOnly && draft.roots?.length ? 3 : 2); return; }
         setDraft(await request("authenticate")); return;
       }
@@ -471,7 +448,6 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
         credential_purpose: initialPurposes?.length === 1 && initialPurposes[0] === "remediation" ? "remediator" : "collector" });
       setCredential(all => Object.fromEntries(Object.entries(all).filter(([key]) => method.fields?.some(f => f.name === key && f.public))));
       setAuthConfig(config); setCredentialsChanged(false); setDraft(next); setPurposes([]); setTargets([]); setResources([]); setRowIds({}); setPlans({}); setCheckedChoices("");
-      if (method.flow === "gcp_oauth") await startSignIn(next.id, locale, browserKey);
     });
   }
   /** Check access for ``ids`` and ``keep``: the current choice, or only the ready features or the passing targets. */
@@ -509,12 +485,10 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
       onSelection?.(edition, chosen, current, groups.slice(1));
       initializedTargets.current = false;
       const next = await request("discover", { purposes: current.purposes }); setDraft(next);
-      if (next.state === "AWAITING_OAUTH") await startSignIn(next.id, locale, browserKey);
     });
   }
-  // A content-scan card lists its targets as soon as the sign-in is confirmed: the scan is the only feature. Google's
-  // cloud consent leaves the page, so there it stays the admin's click.
-  const autoList = contentOnly && method.flow !== "gcp_oauth";
+  // A content-scan card lists targets after authentication.
+  const autoList = contentOnly;
   useEffect(() => { if (step !== 2) autoListed.current = false; }, [step]);
   useEffect(() => {
     if (!autoList || step !== 2 || busy || draft?.state !== "AUTHENTICATED" || autoListed.current) return;
@@ -628,19 +602,6 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
             </details>}
         </> : (method.fields ?? []).map(f => <CredentialField key={f.name} field={f} value={credential[f.name] ?? ""} stored={false}
           onChange={v => { setCredentialsChanged(true); setCredential(all => ({ ...all, [f.name]: v })); }} />)}
-        {googleOAuth ? <>
-          {googleClient.data && !googleClient.data.locked && (!googleClient.data.configured || editGoogleClient)
-            ? <GoogleClientSetup current={googleClient.data} onSaved={() => { setError(null); setEditGoogleClient(false); googleClient.reload(); }}
-                onCancel={googleClient.data.configured ? () => setEditGoogleClient(false) : undefined} />
-            : googleClient.data?.configured === false ? <Banner tone="bad" icon="alert">{L("서버에 고정된 Google 로그인 앱 설정이 올바르지 않습니다. API 서버의 GCP_OAUTH_CLIENT_ID·GCP_OAUTH_CLIENT_SECRET·GCP_OAUTH_REDIRECT_URI를 확인하세요.",
-              "The server's pinned Google sign-in app is invalid. Check GCP_OAUTH_CLIENT_ID, GCP_OAUTH_CLIENT_SECRET and GCP_OAUTH_REDIRECT_URI on the API server.")}</Banner>
-            : googleClient.data?.configured ? <p className="ig-hint">{L("Google 로그인 앱이 준비됐습니다. 하단 ‘인증 확인’에서 Google로 이동해 승인합니다.", "The Google sign-in app is ready. Use ‘Authenticate’ below to continue to Google for approval.")}</p> : null}
-          {googleClient.data?.configured && googleClient.data.source === "DASHBOARD" && !editGoogleClient
-            ? <button type="button" className="link-btn" onClick={() => setEditGoogleClient(true)}>{L("Google 로그인 앱 변경", "Change the Google sign-in app")}</button> : null}
-          {googleClient.loading ? <p role="status">{L("Google 로그인 앱 설정 확인 중", "Checking the Google sign-in app")}</p> : null}
-          {googleClient.error ? <Banner tone="bad" icon="alert">{L("Google 로그인 앱 설정을 확인하지 못했습니다.", "Could not check the Google sign-in app.")}
-            <button type="button" className="link-btn" onClick={googleClient.reload}>{L("다시 확인", "Retry")}</button></Banner> : null}
-        </> : null}
         {previewPurposes.length ? <div className="ig-section"><div className="ig-section-head"><h3>{L("기능별 필요한 권한", "Permissions each feature needs")}</h3></div>
           <PermissionPreview d={d} method={method} edition={edition} purposes={previewPurposes} collapsed /></div> : null}
         <SetupGuide steps={guideSteps(d, method, draft?.generated && reusable ? { target: { ...context, auth: draft.public_auth, generated: draft.generated }, children: [], purposes: [] } : null,
@@ -661,7 +622,7 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
     </div> : null}
     {step === 2 && contentOnly ? <div className="ig-section"><p className="ig-hint">{L("인증을 확인했습니다. 검사할 대상을 불러옵니다.", "Authenticated. Listing what can be scanned.")}</p>
       {!working && (error || !autoList || draft?.state !== "AUTHENTICATED") ? <button type="button" className={autoList ? "ghost-btn" : "primary-btn"} onClick={() => void discover()}>
-        {method.flow === "gcp_oauth" ? L("Cloud 접근 동의·대상 불러오기", "Approve Cloud access and list targets") : L("대상 다시 불러오기", "List targets again")}</button> : null}</div> : null}
+        {L("대상 다시 불러오기", "List targets again")}</button> : null}</div> : null}
     {step === 2 && !authenticationOnly && !contentOnly ? <div className="ig-section"><h3>{L("사용할 기능", "Features to use")}</h3><div className="ig-feats">
       {(supplemental ? initialPurposes ?? [] : existing ? method.purposes.filter(p => serves(method, p, edition) && (draft?.feature_enabled ?? existing.feature_enabled)?.[p] !== false) : purposesForEdition(d, edition)).map(p => {
         const requiredEdition = d.editions.find(e => e.id === edition && methodsFor(d, [p], e.id).length);
@@ -845,7 +806,7 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
       {step > (existing ? (contentOnly ? 3 : 2) : 1) ? <button type="button" className="ghost-btn" disabled={working} data-tip={L("앞 단계의 설정을 확인하거나 수정합니다. 대상·옵션이 바뀌면 권한을 다시 확인합니다.", "Review or edit the previous step. Changed targets or options require a new access check.")} onClick={() => { setError(null); setStep(contentOnly && step === 3 ? 1 : step - 1); }}>{L("이전", "Back")}</button> : null}
       {step === 1 && !existing ? <button type="button" className="primary-btn" disabled={authDisabled}
         data-tip={L("선택한 방식으로 서버의 연동 신원을 인증합니다. 기능·수집 범위는 다음 단계에서 정합니다.", "Authenticates the server's integration identity using the selected method. Features and collection scope are selected in the following steps.")} onClick={() => void authenticate()}>
-        {approving ? L("신원 승인·인증 확인", "Approve identity and authenticate") : appSetup && !reusable ? L("GitHub에서 App 만들기·설치", "Create and install App on GitHub") : method.generated && !reusable ? L("인증키 만들기", "Create sign-in key") : draft?.state === "SETUP_REQUIRED" && reusable
+        {approving ? L("신원 승인·인증 확인", "Approve identity and authenticate") : appSetup && !reusable ? L("GitHub에서 App 만들기·설치", "Create and install App on GitHub") : draft?.state === "SETUP_REQUIRED" && reusable
           ? L("키 등록 완료·인증 확인", "Key registered · authenticate") : L("인증 확인", "Authenticate")}</button> : null}
       {step === 2 && authenticationOnly ? <button type="button" className="primary-btn" disabled={working || !name.trim() || draft?.state !== "AUTHENTICATED"}
         onClick={() => void act(async () => { const connection = await request<ProviderConnection>("complete", { name, authentication_only: true });
@@ -853,7 +814,7 @@ export function AuthFirstWizard({ descriptor: d, admin, schedulesAllowed = true,
         })}>{L("계정 연결 저장", "Save account connection")}</button> : null}
       {step === 2 && !authenticationOnly && !contentOnly ? <button type="button" className="primary-btn" disabled={working || !selectedFeatures.length}
         data-tip={L("선택한 기능에 연결할 계정·조직 목록을 조회합니다. 아직 연결을 저장하거나 콘텐츠를 검사하지 않습니다.", "Lists accounts or organizations for the selected features. It does not save the integration or scan content yet.")}
-        onClick={() => void discover()}>{method.flow === "gcp_oauth" ? L("Cloud 접근 동의·대상 불러오기", "Approve Cloud access and list targets") : L("대상 불러오기", "List targets")}</button> : null}
+        onClick={() => void discover()}>{L("대상 불러오기", "List targets")}</button> : null}
       {step === 3 ? <button type="button" className="primary-btn" disabled={working || !targetIds.length || targetIds.length > 100 || unlisted > 0
         || gating.some(p => !targetsFor(p).length || missingRequired(fields(p), plan(p)))}
         data-tip={L("필수 권한을 확인하고 검사 가능한 리소스를 조회합니다. 거절·미확인 권한이 있으면 이 단계에 머뭅니다.", "Checks required access and lists scannable resources. Missing or unverified access keeps you on this step.")}

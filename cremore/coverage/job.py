@@ -59,8 +59,6 @@ def run(worker, job, task, context):
     spec = ConnectionSpec.model_validate(connection["spec"])
     if not worker_collected(spec):
         raise CoverageError("INVALID_INVENTORY_PROVIDER")
-    if spec.provider in ("vault", "openbao"):
-        return _run_vault(worker, job, task, context, store, connection, spec)
     if worker.aws_sessions is None:
         raise aws_access.AccessBlocked("AWS_SESSION_UNAVAILABLE")
     from cremore.coverage.aws_scheduling import feature_refusal, scheduled_refusal
@@ -190,76 +188,6 @@ class _ValueClient:
                 self.session = session
             return getattr(self.client, operation)(**kwargs)
         return call
-
-
-def _run_vault(worker, job, task, context, store, connection, spec):
-    """Collect a Vault/OpenBao store on the worker.
-
-    Without a login of its own, a connection reads only the installation's own
-    secret store, with that store's identity, which is never sent anywhere
-    else. A connection with ``server_auth`` logs in to its cluster as itself and
-    never with the installation's identity, even at the same address.
-    """
-    from cremore.collectors.base import CollectorError
-
-    settings = getattr(worker, "settings", None)
-    own_login = spec.server_auth is not None
-    if not own_login and (settings is None or not settings.secret_store_enabled
-                          or settings.secret_store_url.rstrip("/") != spec.endpoint):
-        raise CollectorError("VAULT_SERVER_IDENTITY_NOT_CONFIGURED")
-    cid = connection["id"]
-    with context() as repo:
-        snapshot = CoverageStore(repo).start(cid, connection["revision"], str(job.id),
-            Contract(engine_digest=worker.orchestrator.engine.detection_digest, policy_digest=worker.orchestrator.coverage_policy_digest).model_dump())
-
-    def checkpoint():
-        with context():
-            pass
-        current = store.get(cid)
-        if not current or not current["enabled"] or current["revision"] != connection["revision"]:
-            raise CollectionLimit("COLLECTION_SCOPE_CHANGED")
-
-    def login(token):
-        # Log in once before reading, so a refused login is its own failure
-        # rather than every listing looking unreadable.
-        from cremore_vault_provider.secretstore import SecretStoreError
-        try:
-            if callable(token):
-                token()
-        except SecretStoreError as exc:
-            raise CollectorError(exc.code) from None
-        return token
-
-    def collect():
-        import httpx
-        from cremore_vault_provider.coverage import collect_kv
-
-        if own_login:
-            from cremore_vault_provider.connection_login import connection_token, tls_verify
-            from cremore_vault_provider.secretstore import SecretStoreError
-
-            from cremore.onboarding.credential_access import resolver_for_child
-
-            resolver = resolver_for_child(worker.repo, "coverage", cid,
-                getattr(worker, "metadata_secret_resolver", None), spec=spec, settings=settings)
-
-            install_file = (settings.secret_store_kubernetes_token_file
-                            if settings is not None and settings.secret_store_auth_mode == "kubernetes" else "")
-            with httpx.Client(timeout=30.0, follow_redirects=False, verify=tls_verify(spec)) as client:
-                try:
-                    token = connection_token(spec, client, token_dir=getattr(settings, "vault_connection_token_dir", ""),
-                                             install_token_file=install_file,
-                                             resolver=resolver)
-                except SecretStoreError as exc:
-                    raise CollectorError(exc.code) from None
-                return collect_kv(spec, client, login(token), worker.orchestrator.engine, checkpoint=checkpoint)
-        from cremore_vault_provider.secretstore import kv_from_settings
-
-        with httpx.Client(timeout=30.0, follow_redirects=False) as client:
-            token = kv_from_settings(settings, client).token
-            return collect_kv(spec, client, login(token), worker.orchestrator.engine, checkpoint=checkpoint)
-
-    _publish(context, cid, snapshot, task, collect, checkpoint, lambda repo: None)
 
 
 def _publish(context, cid, snapshot, task, collect, checkpoint, recheck):

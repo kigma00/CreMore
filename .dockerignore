@@ -13,11 +13,7 @@ tmp
 *.log
 # Runtime profiles, scan input, and fingerprint keys are mounted, never built.
 configs/
-# Include the GCP library reused by the product, without standalone state or docs.
 **/standalone
-!gcp/standalone
-gcp/standalone/*
-!gcp/standalone/cremore_gcp
 **/web
 **/.local
 **/node_modules

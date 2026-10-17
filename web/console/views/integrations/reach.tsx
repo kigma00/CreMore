@@ -31,20 +31,16 @@ type KeyIdentity = { approved: object | null; remediation_role_name: string };
 type Tone = "ok" | "partial" | "bad" | "running" | undefined;
 type Purpose = "scanner" | "remediation";
 
-/** The integrations whose targets this view lists: an AWS integration's accounts, a GitHub inventory's organizations,
- * a Google Cloud project's collection (one scoped to an organization or folder discovers projects instead). */
-export function reachKind(c: ProviderConnection): "aws" | "github" | "gcp" | null {
+/** The integrations whose targets this view lists: AWS accounts and GitHub organizations. */
+export function reachKind(c: ProviderConnection): "aws" | "github" | null {
   if (c.provider === "aws" && c.children.some(child => child.kind === "aws_account")) return "aws";
   if (c.provider === "github" && inventories(c).length) return "github";
-  if (c.provider === "gcp" && inventories(c).length && (c.target.scope ?? "project") === "project") return "gcp";
   return null;
 }
 
-/** The collections an integration's targets are read from: a GitHub organization's inventory and, with an enterprise,
- * the enterprise's; a Google Cloud project's collection, which serves inventory and vault under whichever purpose was
- * set up first (cremore_gcp_provider/onboarding.py children). */
+/** The collections an integration's targets are read from: GitHub organization and enterprise inventories. */
 export function inventories(c: ProviderConnection) {
-  return c.children.filter(child => child.kind === "metadata" && (child.purpose === "inventory" || (c.provider === "gcp" && child.purpose === "vault")));
+  return c.children.filter(child => child.kind === "metadata" && child.purpose === "inventory");
 }
 
 const STATUS: Record<string, [string, string, Tone]> = {
@@ -368,78 +364,6 @@ export function GitHubOrgs({ child }: { child: Child }) {
 
 /* ---------- Google Cloud: what a project's collections observed, and what changed ---------- */
 
-/** One GCP object or change as GET .../gcp serves it (cremore/coverage/gcp_store.py page, reconcile, _event). */
-export type GcpRow = {
-  id: string; source_id: string; kind?: string; lifecycle_state?: string; last_seen_at?: string; absent_since?: string;
-  event_type?: string; previous_state?: string | null; current_state?: string | null; observed_at?: string;
-};
-type GcpPage = { project_id: string; counts: { objects: number; events: number }; page: { items: GcpRow[]; total: number } };
-
-const GCP_EVENTS: Record<string, [string, string]> = {
-  discovered: ["새로 발견", "Discovered"], state_changed: ["상태 바뀜", "State changed"], metadata_changed: ["설정 바뀜", "Settings changed"],
-  no_longer_listed: ["목록에서 사라짐", "No longer listed"], value_collected: ["값 수집", "Value collected"], value_changed: ["값 바뀜", "Value changed"],
-};
-const GCP_STATES: Record<string, [string, string]> = {
-  active: ["활성", "Active"], enabled: ["사용 중", "Enabled"], disabled: ["사용 중지", "Disabled"], deleted: ["삭제됨", "Deleted"],
-  destroyed: ["파기됨", "Destroyed"], no_longer_listed: ["목록에서 사라짐", "No longer listed"], unknown: ["알 수 없음", "Unknown"],
-};
-const gcpWord = (table: Record<string, [string, string]>, key: string | null | undefined, L: Say) => !key ? "—" : table[key] ? L(...table[key]) : key;
-
-/** A change in words: what happened, and the state it moved from and to where it moved. */
-export function gcpEventText(row: GcpRow, L: Say): string {
-  const what = gcpWord(GCP_EVENTS, row.event_type, L);
-  return row.event_type === "state_changed" ? `${what} · ${gcpWord(GCP_STATES, row.previous_state, L)} → ${gcpWord(GCP_STATES, row.current_state, L)}` : what;
-}
-
-/** A long resource name's last segments, enough to tell objects apart (projects/p/serviceAccounts/a/keys/k -> a/keys/k);
- * a short one whole. The full name is the cell's title. */
-export function shortName(name: string): string {
-  const parts = name.split("/");
-  return parts.length > 4 ? parts.slice(-3).join("/") : name;
-}
-
-export function GcpProject({ child }: { child: Child }) {
-  const L = useL();
-  const [kind, setKind] = useState<"objects" | "events">("events");
-  // Both lists are read once, so switching between them keeps the switch (and its focus) in place, and one that fails
-  // leaves the other within reach.
-  const events = useApi<GcpPage>(`v2/coverage/connections/${child.id}/gcp?kind=events&limit=50`);
-  const objects = useApi<GcpPage>(`v2/coverage/connections/${child.id}/gcp?kind=objects&limit=50`);
-  const head = events.data ?? objects.data;
-  if (!head) return events.error || objects.error
-    ? <ErrorLine onRetry={() => { events.reload(); objects.reload(); }}>{reasonText(events.error ?? objects.error, L)}</ErrorLine> : <Loading />;
-  const view = kind === "events" ? events : objects;
-  return <>
-    <div className="aws-set-acts">
-      <span className="ig-sub">{L(`프로젝트 ${head.project_id}`, `Project ${head.project_id}`)}</span>
-      <button type="button" className={kind === "events" ? "primary-btn" : "ghost-btn"} aria-pressed={kind === "events"} onClick={() => setKind("events")}>
-        {L(`변경 이력 ${head.counts.events}건`, `${head.counts.events} changes`)}</button>
-      <button type="button" className={kind === "objects" ? "primary-btn" : "ghost-btn"} aria-pressed={kind === "objects"} onClick={() => setKind("objects")}>
-        {L(`관측한 항목 ${head.counts.objects}개`, `${head.counts.objects} observed`)}</button>
-    </div>
-    {view.data ? <GcpTable kind={kind} items={view.data.page.items} total={view.data.page.total} />
-      : view.error ? <ErrorLine onRetry={view.reload}>{reasonText(view.error, L)}</ErrorLine> : <Loading />}
-  </>;
-}
-
-/** A project's changes (newest first) or observed objects, with when each happened or was last seen. */
-export function GcpTable({ kind, items, total }: { kind: "objects" | "events"; items: GcpRow[]; total: number }) {
-  const L = useL();
-  const locale = useLocale();
-  if (!items.length) return <p className="ig-sub">{kind === "events" ? L("아직 기록된 변경이 없습니다.", "No change recorded yet.") : L("아직 관측한 항목이 없습니다.", "Nothing observed yet.")}</p>;
-  return <>
-    <div className="sub-scroll"><table className="sub-tbl reach-tbl">
-      <thead><tr><th>{L("항목", "Object")}</th><th>{kind === "events" ? L("변경", "Change") : L("상태", "State")}</th><th>{kind === "events" ? L("시각", "When") : L("마지막 관측", "Last seen")}</th></tr></thead>
-      <tbody>{items.map(row => <tr key={row.id}>
-        <td data-label={L("항목", "Object")}><span className="mono cell-wrap" title={row.source_id}>{shortName(row.source_id)}</span></td>
-        <td data-label={kind === "events" ? L("변경", "Change") : L("상태", "State")}>{kind === "events" ? gcpEventText(row, L) : gcpWord(GCP_STATES, row.lifecycle_state, L)}</td>
-        <td className="nowrap num" data-label={kind === "events" ? L("시각", "When") : L("마지막 관측", "Last seen")}>{rel((kind === "events" ? row.observed_at : row.last_seen_at) ?? null, locale)}</td>
-      </tr>)}</tbody>
-    </table></div>
-    {total > items.length ? <p className="ig-sub">{L(`최근 ${items.length}건 · 전체 ${total}건`, `Latest ${items.length} of ${total}`)}</p> : null}
-  </>;
-}
-
 export function ReachModal({ conn, onClose }: { conn: ProviderConnection; onClose: () => void }) {
   const L = useL();
   const kind = reachKind(conn);
@@ -450,7 +374,7 @@ export function ReachModal({ conn, onClose }: { conn: ProviderConnection; onClos
       : kind === "github" ? inventories(conn).map((child, index, all) => all.length > 1
         ? <div className="ig-section" key={child.id}><div className="ig-section-head"><h3>{child.name ?? child.id}</h3></div><GitHubOrgs child={child} /></div>
         : <GitHubOrgs key={child.id} child={child} />)
-        : kind === "gcp" ? <GcpProject child={inventories(conn)[0]} /> : null}
+        : null}
     <div className="modal-foot"><button type="button" className="ghost-btn" onClick={onClose}>{L("닫기", "Close")}</button></div>
   </Modal>;
 }

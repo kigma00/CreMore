@@ -112,13 +112,6 @@ services:
       AWS_WEB_IDENTITY_TOKEN_FILE: ${COLLECTOR_AWS_WEB_IDENTITY_TOKEN_FILE:-}
       AWS_ROLES_ANYWHERE_CONFIG: ${COLLECTOR_AWS_ROLES_ANYWHERE_CONFIG:-}
       AWS_DEFAULT_REGION: ${COLLECTOR_AWS_REGION:-ap-northeast-2}
-      GOOGLE_APPLICATION_CREDENTIALS: /run/cloud-identity/gcp/adc.json
-      GOOGLE_CLOUD_QUOTA_PROJECT: ${COLLECTOR_GCP_QUOTA_PROJECT:-}
-      AZURE_CLIENT_ID: ${COLLECTOR_AZURE_CLIENT_ID:-}
-      AZURE_TENANT_ID: ${COLLECTOR_AZURE_TENANT_ID:-}
-      AZURE_FEDERATED_TOKEN_FILE: /run/cloud-identity/azure/token
-      AZURE_AUTHORITY_HOST: ${COLLECTOR_AZURE_AUTHORITY_HOST:-https://login.microsoftonline.com/}
-      VAULT_CONNECTION_TOKEN_DIR: /run/cloud-identity/vault
     volumes:
       - *recipients
       - *database-ca
@@ -151,12 +144,6 @@ services:
       AWS_WEB_IDENTITY_TOKEN_FILE: ${REMEDIATOR_AWS_WEB_IDENTITY_TOKEN_FILE:-}
       AWS_ROLES_ANYWHERE_CONFIG: ${REMEDIATOR_AWS_ROLES_ANYWHERE_CONFIG:-}
       AWS_DEFAULT_REGION: ${REMEDIATOR_AWS_REGION:-ap-northeast-2}
-      GOOGLE_APPLICATION_CREDENTIALS: /run/cloud-identity/gcp/adc.json
-      GOOGLE_CLOUD_QUOTA_PROJECT: ${REMEDIATOR_GCP_QUOTA_PROJECT:-}
-      AZURE_CLIENT_ID: ${REMEDIATOR_AZURE_CLIENT_ID:-}
-      AZURE_TENANT_ID: ${REMEDIATOR_AZURE_TENANT_ID:-}
-      AZURE_FEDERATED_TOKEN_FILE: /run/cloud-identity/azure/token
-      AZURE_AUTHORITY_HOST: ${REMEDIATOR_AZURE_AUTHORITY_HOST:-https://login.microsoftonline.com/}
     volumes:
       - *recipients
       - *approval-public

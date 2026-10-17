@@ -84,10 +84,6 @@ def run(worker, job, task, context):
             current = MetadataStore(repo).require_connection(cid)
             if not current["enabled"] or current["revision"] != revision:
                 raise CoverageError("CONNECTION_REVISION_CONFLICT")
-            if spec.provider == "gcp":
-                from cremore.coverage.gcp_store import linked_source_disabled
-                if linked_source_disabled(repo, cid):
-                    raise CoverageError("GCP_SOURCE_DISABLED")
             paused_at = pause_since(repo, cid, job.id)
         if paused_at is not None:
             raise CoverageError(PAUSED)
@@ -131,17 +127,12 @@ def run(worker, job, task, context):
     with resolved_slots(spec, resolver,
                         collector.optional_secret_roles) as secrets:
         value_context = None
-        if collector.uses_value_context and (spec.options.include_values or spec.options.include_provider_hashes):
+        if collector.uses_value_context and spec.options.include_provider_hashes:
             key = worker.orchestrator.config.fingerprint_key
             value_context = {"engine": worker.orchestrator.engine,
                              "key_id": hashlib.sha256(key).hexdigest() if key else None,
                              "engine_digest": worker.orchestrator.engine.detection_digest,
                              "policy_digest": worker.orchestrator.coverage_policy_digest}
-            if spec.provider == "azure_resource_manager" and spec.options.azure_storage_accounts:
-                from cremore.coverage.metadata_correlation import sas_candidates
-                value_context["sas_candidate_status"] = {}
-                value_context["sas_candidates"] = sas_candidates(
-                    worker.repo, spec.options.azure_storage_accounts, status=value_context["sas_candidate_status"])
         recollection_plan = None
         if job.payload.get("retry_from_run"):
             if not collector.supports_recollection:
@@ -196,10 +187,6 @@ def run(worker, job, task, context):
                     current = bound.require_connection(cid)
                     if current["revision"] != revision or not current["enabled"]:
                         raise CoverageError("CONNECTION_REVISION_CONFLICT")
-                    if spec.provider == "gcp":
-                        from cremore.coverage.gcp_store import linked_source_disabled
-                        if linked_source_disabled(repo, cid):
-                            raise CoverageError("GCP_SOURCE_DISABLED")
                     if snapshot is None:
                         snapshot = bound.start(cid, revision, str(job.id), contract)
                         rid = snapshot["id"]
@@ -211,15 +198,11 @@ def run(worker, job, task, context):
                                                   "item_count": item_count, "provider": page.checkpoint})
                     TaskStore(repo).checkpoint(task["id"], task["token"], next_state)
                     if page.status not in (None, "WAITING"):
-                        gcp_summary = {}
-                        if spec.provider == "gcp" and page.status in ("COMPLETE", "PARTIAL"):
-                            from cremore.coverage.gcp_store import GcpStore
-                            gcp_summary = GcpStore(repo).reconcile(cid, rid, list(bound.iter_records(rid)))
                         terminal = bound.finish(cid, rid, MetadataFinish(batch_count=batch_index, item_count=item_count,
                                                                          status=page.status, reasons=page.reasons))
                         TaskStore(repo).finish(task["id"], task["token"], {"metadata_items": item_count,
                             "coverage_status": terminal["status"], "coverage_run_id": str(rid),
-                            **gcp_summary, **source_summary(bound, rid)})
+                            **source_summary(bound, rid)})
                 if page.status == "WAITING":
                     TaskStore(worker.repo).defer(task["id"], task["token"],
                         page.reasons[0] if page.reasons else "METADATA_RETRY_LATER", delay_seconds=page.retry_after_seconds)

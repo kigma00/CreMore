@@ -173,49 +173,6 @@ def enqueue_aws_inventory(repo, settings, aws_sessions, connection_id, *, actor=
         return {"job_id": job.id, "status": job.status, "enqueued": True}
 
 
-def enqueue_server_vault(repo, connection_id, *, actor="api", scheduled=False, now=None):
-    """Queue one server collection of a Vault/OpenBao store; no AWS approval is involved."""
-    store = CoverageStore(repo)
-    cid = uuid.UUID(str(connection_id))
-    now = utc(now or datetime.now(UTC))
-    with store.transaction() as conn:
-        bound = TaskStore(repo)._bound(conn)
-        row = CoverageStore(bound)._get(conn, "connections", cid, lock=True)
-        if not row or not row["enabled"]:
-            raise CoverageError("CONNECTION_DISABLED_OR_MISSING")
-        spec = ConnectionSpec.model_validate(row["spec"])
-        if spec.provider not in ("vault", "openbao") or not spec.server_collection:
-            raise CoverageError("INVALID_INVENTORY_PROVIDER")
-        existing = connection_job(bound, cid, active=True)
-        if existing:
-            return {"job_id": existing.id, "status": existing.status, "enqueued": False}
-        receipt_key = "vault-collection-schedule:" + str(cid)
-        if scheduled:
-            latest = connection_job(bound, cid)
-            if not spec.schedule_minutes or now < next_collection_at(
-                    bound, receipt_key, latest, spec.schedule_minutes, revision=row["revision"], now=now):
-                return {"job_id": latest.id if latest else None, "status": "NOT_DUE", "enqueued": False}
-        job = bound.enqueue_job(ScanJob(kind=JOB_KIND, payload={
-            "provider": spec.provider, "coverage_connection_id": str(cid), "coverage_revision": row["revision"]}))
-        bound.put_setting(receipt_key, {"queued_at": now.isoformat(), "revision": row["revision"],
-                                        "job_id": str(job.id)}, actor)
-        return {"job_id": job.id, "status": job.status, "enqueued": True}
-
-
-def poll_server_vault_schedules(repo, settings, *, now=None):
-    """Only an explicit interval on a server-collected Vault/OpenBao connection schedules it."""
-    result = {"enqueued": 0, "skipped": 0}
-    if not settings.scan_schedules_allowed:
-        return result
-    for row in CoverageStore(repo).list_connections():
-        spec = row["spec"]
-        if (row["enabled"] and spec.get("schema_version", 1) == 1 and spec.get("provider") in ("vault", "openbao")
-                and spec.get("server_collection") and spec.get("schedule_minutes")):
-            queued = enqueue_server_vault(repo, row["id"], actor="vault-collection-schedule", scheduled=True, now=now)
-            result["enqueued" if queued["enqueued"] else "skipped"] += 1
-    return result
-
-
 def poll_aws_inventory_schedules(repo, settings, aws_sessions, *, now=None):
     result = {"enqueued": 0, "skipped": 0, "blocked": 0}
     if not settings.scan_schedules_allowed or aws_sessions is None:
@@ -223,7 +180,8 @@ def poll_aws_inventory_schedules(repo, settings, aws_sessions, *, now=None):
     scheduled_by_account = {}
     for row in CoverageStore(repo).list_connections():
         spec = row["spec"]
-        if (row["enabled"] and spec.get("schema_version", 1) == 1 and spec.get("schedule_minutes")
+        if (row["enabled"] and spec.get("provider") in {"aws_iam", "aws_cloudtrail", "aws_secrets_manager", "aws_ssm"}
+                and spec.get("schema_version", 1) == 1 and spec.get("schedule_minutes")
                 and (spec.get("server_collection") or spec.get("schedule_source") == "connection")):
             scheduled_by_account.setdefault(spec.get("account_id"), []).append(row)
     for account in repo.list_aws_accounts():

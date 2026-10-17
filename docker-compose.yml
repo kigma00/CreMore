@@ -58,10 +58,7 @@ services:
       FINGERPRINT_KEY: ${FINGERPRINT_KEY:?set FINGERPRINT_KEY in .env}
       # The audit trail's MAC key; empty derives it from FINGERPRINT_KEY. See .env.example.
       AUDIT_CHAIN_KEY: ${AUDIT_CHAIN_KEY:-}
-      GCP_OAUTH_CLIENT_ID: ${GCP_OAUTH_CLIENT_ID:-}
-      GCP_OAUTH_CLIENT_SECRET: ${GCP_OAUTH_CLIENT_SECRET:-}
-      GCP_OAUTH_REDIRECT_URI: ${GCP_OAUTH_REDIRECT_URI:-}
-      # Installed ticket-system plugins an admin may choose (comma-separated ids, e.g. jira);
+      # Installed ticket-system plugins an admin may choose (comma-separated ids);
       # empty offers none. The API and the worker both read it. See docs/TICKET_SYSTEMS.md.
       TICKET_SYSTEM_PLUGINS: ${TICKET_SYSTEM_PLUGINS:-}
       # Where the master that seals stored connection credentials comes from.
@@ -182,8 +179,6 @@ services:
       # off until an Admin binds one. A mode set to disabled keeps it off.
       SCAN_SCHEDULES_MODE: ${SCAN_SCHEDULES_MODE:-enabled}
       SCAN_SQS_MODE: ${SCAN_SQS_MODE:-enabled}
-      SCAN_PUBSUB_MODE: ${SCAN_PUBSUB_MODE:-enabled}
-      SCAN_SERVICEBUS_MODE: ${SCAN_SERVICEBUS_MODE:-enabled}
       SCAN_CHANGE_FEEDS_MODE: ${SCAN_CHANGE_FEEDS_MODE:-enabled}
       # Optional pins. Set one and the dashboard shows that field as fixed.
       SCAN_SQS_QUEUE_URL: "${SCAN_SQS_QUEUE_URL:-}"
@@ -234,9 +229,6 @@ services:
     environment:
       <<: *app-environment
       # OAuth client configuration is API-only; jobs use their sealed references.
-      GCP_OAUTH_CLIENT_ID: ""
-      GCP_OAUTH_CLIENT_SECRET: ""
-      GCP_OAUTH_REDIRECT_URI: ""
       # Optional static Vault/OpenBao token. Tokens can instead be entered in the
       # dashboard (stored encrypted); Helm supports Kubernetes workload auth.
       # This is the wider one: it reads the connection references the worker

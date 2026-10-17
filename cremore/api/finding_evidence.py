@@ -108,69 +108,6 @@ def source_location(exposure) -> dict:
     elif provider == "notion" and _PAGE.fullmatch(str(meta.get("page_id") or "")):
         out["page_id"] = meta["page_id"]
         link.update(status="CURRENT_ONLY", url=f"https://www.notion.so/{meta['page_id']}")
-    elif provider in ("gitlab", "confluence", "bitbucket"):
-        from cremore.source_config import https_base
-        try:
-            instance = https_base(meta.get("source_instance", ""))
-            out["provider_instance_id"] = instance
-            if provider == "gitlab":
-                project = meta.get("gitlab_project_path", "")
-                if not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", project) or not _SHA.fullmatch(exposure.object_version):
-                    raise ValueError("INVALID_COORDINATES")
-                out.update(revision=exposure.object_version, revision_kind="COMMIT_SHA")
-                link.update(status="AVAILABLE", historical_content=True,
-                    url=f"{instance}/{project}/-/blob/{exposure.object_version}/{quote(exposure.location, safe='/')}" + (f"#L{line}" if line and not decoded else ""))
-            elif provider == "bitbucket":
-                if not re.fullmatch(r"[A-Za-z0-9_~-]{1,128}/[A-Za-z0-9_.-]{1,128}", exposure.resource_name or "") or not _SHA.fullmatch(exposure.object_version):
-                    raise ValueError("INVALID_COORDINATES")
-                owner, repo = exposure.resource_name.split("/", 1)
-                cloud = meta.get("bitbucket_edition") == "cloud"
-                if cloud and instance != "https://api.bitbucket.org":
-                    raise ValueError("INVALID_COORDINATES")
-                if not cloud and meta.get("bitbucket_edition") != "data_center":
-                    raise ValueError("INVALID_COORDINATES")
-                site = "https://bitbucket.org" if cloud else instance
-                route = f"/{owner}/{repo}/src/{exposure.object_version}/{quote(exposure.location, safe='/')}" if cloud else f"/projects/{owner}/repos/{repo}/browse/{quote(exposure.location, safe='/')}?at={exposure.object_version}"
-                anchor = (f"#lines-{line}" if cloud else f"#{line}") if line and not decoded else ""
-                out.update(provider_instance_id=site, source_deployment=meta["bitbucket_edition"], revision=exposure.object_version, revision_kind="COMMIT_SHA")
-                link.update(status="AVAILABLE", historical_content=True, url=site + route + anchor)
-            else:
-                from urllib.parse import urlsplit
-                site = https_base(meta.get("source_site", instance))
-                if urlsplit(site).hostname == "api.atlassian.com" or not exposure.resource_name.isdigit():
-                    raise ValueError("SITE_COORDINATES_REQUIRED")
-                out.update(provider_instance_id=site, revision=exposure.object_version, revision_kind="PAGE_VERSION")
-                link.update(status="CURRENT_ONLY", url=f"{site}/pages/viewpage.action?pageId={exposure.resource_name}")
-        except (ValueError, TypeError):
-            link["reason_code"] = "SOURCE_COORDINATES_NOT_RECORDED"
-    elif provider == "gcp" and re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]", exposure.resource_name) and exposure.location:
-        out.update(revision=exposure.object_version, revision_kind="GCS_GENERATION")
-        link.update(status="AVAILABLE" if exposure.object_version.isdigit() else "CURRENT_ONLY",
-                    historical_content=exposure.object_version.isdigit(),
-                    url=f"https://console.cloud.google.com/storage/browser/_details/{exposure.resource_name}/{quote(exposure.location, safe='')}" +
-                        (f"?generation={exposure.object_version}" if exposure.object_version.isdigit() else ""))
-    elif provider == "azure_devops":
-        from cremore.source_config import https_base
-        try:
-            instance = https_base(meta.get("source_instance", ""))
-            organization, project, repository = (exposure.resource_name or "").split("/")
-            if repository == "$":
-                # TFVC has no documented web file link; its location is still recorded.
-                link["reason_code"] = "SOURCE_LINK_NOT_SUPPORTED"
-            else:
-                if not (organization and project and repository and exposure.location
-                        and re.fullmatch(r"[0-9a-f]{40}", exposure.object_version or "")):
-                    raise ValueError("INVALID_COORDINATES")
-                # The file view at one commit: version=GC<sha>, beside the documented version=GB<branch>.
-                out.update(provider_instance_id=instance, revision=exposure.object_version, revision_kind="COMMIT_SHA")
-                link.update(status="AVAILABLE", historical_content=True, url=(
-                    f"{instance}/{quote(organization, safe='')}/{quote(project, safe='')}/_git/{quote(repository, safe='')}"
-                    f"?path={quote('/' + exposure.location, safe='/')}&version=GC{exposure.object_version}&_a=contents"))
-        except (ValueError, TypeError):
-            link["reason_code"] = "SOURCE_COORDINATES_NOT_RECORDED"
-    elif provider == "azure_blob":
-        # Coordinates are recorded; there is no documented portal link to one blob.
-        link["reason_code"] = "SOURCE_LINK_NOT_SUPPORTED"
     else:
         link["reason_code"] = "SOURCE_COORDINATES_NOT_RECORDED"
     out["original_link"] = link

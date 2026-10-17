@@ -77,7 +77,7 @@ def validate_spec(spec):
     if len(spec.scopes) != 1:
         raise ValueError("SLACK_ONE_SCOPE_REQUIRED")
     scope_id(spec.scopes[0])
-    if (options.mode != "inventory" or options.page_size > 1000 or options.sources or options.include_values
+    if (options.mode != "inventory" or options.page_size > 1000 or options.sources
             or options.include_actions or options.locations or options.include_deleted
             or options.audit_created_after or (options.audit_lookback_days is not None and not audit)
             or (options.audit_lookback_days or 0) > 365 or options.requests_per_second > 1):

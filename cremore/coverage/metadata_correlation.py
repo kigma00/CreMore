@@ -1,14 +1,8 @@
-"""Passive links to issuer inventory, with value, identifier and candidate evidence.
-
-Content location does not identify the issuer: a GCP key may live in GitLab.
-Only an explicit shared identifier or compatible keyed value comparison links
-an issued object. Nothing here authenticates with a discovered credential.
-"""
+"""Passive links to issuer inventory using compatible comparison evidence."""
 
 from __future__ import annotations
 
 import re
-import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
@@ -20,15 +14,9 @@ from cremore.coverage.facts import unpack_facts
 from cremore.coverage.models import SCHEME
 from cremore.coverage.store import CoverageError, utc
 
-INVENTORY_PROVIDERS = {
-    "github": "github", "gitlab": "gitlab", "gcp": "gcp", "notion": "notion",
-    "atlassian": "atlassian", "bitbucket": "bitbucket", "azure": "azure_entra", "azure_devops": "azure_devops",
-}
-CANDIDATE_KIND = {"GITLAB_RUNNER_TOKEN": "runner"}
+INVENTORY_PROVIDERS = {"github": "github", "notion": "notion", "slack": "slack"}
 MAX_INVENTORY_ROWS = 10000
 MAX_ACTIVITY_SUMMARIES = 1000
-MAX_SAS_CANDIDATES = 1000
-MAX_SAS_EXPOSURES = 1000
 _DIGEST = re.compile(r"[a-f0-9]{64}")
 
 
@@ -62,56 +50,13 @@ def _owner_values(facts, parent=""):
 
 
 def _verified_owners(exposures, provider):
-    """The owner a provider reported when the discovered token itself was verified, and the host it
-    belongs to: owner ids are per instance. GitHub records its host; a GitLab result records the
-    self-managed instance that verified it and no host for GitLab.com. None means a single-instance
-    provider."""
+    """Return provider-reported owners for candidate inventory links."""
     verified = [e.metadata for e in exposures if (e.metadata or {}).get("verification_state") in ("verified", "restricted")]
     owners = {str(m[key]).casefold() for m in verified for key in ("verification_owner_id", "verification_owner_name")
               if m.get(key)}
-    hosts = ({str(m.get("verification_host") or "gitlab.com").lower() for m in verified} if provider == "gitlab" else
-             {str(m["verification_host"]).lower() for m in verified if m.get("verification_host")}
+    hosts = ({str(m["verification_host"]).lower() for m in verified if m.get("verification_host")}
              if provider == "github" else None)
     return owners, hosts
-
-
-def _instance_key(url):
-    """Comparable form of an HTTPS GitLab base URL (host, port, path), or None."""
-    try:
-        parts = urlsplit(url) if isinstance(url, str) else None
-        return ((parts.hostname.lower(), parts.port, parts.path.rstrip("/"))
-                if parts and parts.scheme == "https" and parts.hostname else None)
-    except ValueError:
-        return None
-
-
-def _gitlab_verified_tokens(exposures):
-    """(instance, token id) pairs that GitLab named when the discovered token was verified.
-
-    A result without a host came from GitLab.com. A self-managed result came from the registered
-    instance the token was found in (the only self-managed host a token is ever sent to), so its
-    host must match that source instance.
-    """
-    pairs = set()
-    for exposure in exposures:
-        meta = exposure.metadata or {}
-        if meta.get("verification_state") not in ("verified", "restricted") or not meta.get("verification_token_id"):
-            continue
-        host = str(meta.get("verification_host") or "").lower()
-        key = _instance_key(meta.get("source_instance") if host else "https://gitlab.com")
-        if key and key[0] == (host or "gitlab.com"):
-            pairs.add((key, str(meta["verification_token_id"])))
-    return pairs
-
-
-# GitLab identity namespaces backed by a PersonalAccessToken, which /personal_access_tokens/self names:
-# personal and service-account PATs, and group/project access tokens (gitlab metadata.model.identity).
-_GITLAB_PAT_FAMILIES = {"personal_access_token", "resource_access_token"}
-
-
-def _child_values(facts, parent):
-    return {fact.get("name"): fact.get("value") for top in facts or [] if top.get("name") == parent
-            for fact in top.get("children") or []}
 
 
 def _compatible(meta, match):
@@ -175,30 +120,6 @@ def _token_activity(store, exposures, reasons):
 
 def _link(row, credential, exposures):
     """Return evidence only, never the internal comparison fingerprint."""
-    if credential.credential_type == "GITLAB_PERSONAL_ACCESS_TOKEN":
-        # The instance that verified the discovered token named this exact token. Token ids are
-        # per instance, so the issued entry must come from that same instance.
-        issued = _child_values((row.get("summary") or {}).get("facts"), "identity")
-        if (issued.get("namespace") in _GITLAB_PAT_FAMILIES
-                and (_instance_key(issued.get("instance")), str(issued.get("native_id"))) in _gitlab_verified_tokens(exposures)):
-            return "IDENTIFIER", "PROVIDER_VERIFIED_TOKEN_ID"
-    if credential.credential_type == "AZURE_SAS_TOKEN":
-        match = (row.get("summary") or {}).get("value_match") or {}
-        if (credential.fingerprint in (match.get("signed_fingerprints") or [])
-                and any(_compatible(exposure.metadata or {}, match) for exposure in exposures)):
-            # This key recomputed the SAS signature: it signed this exact SAS.
-            return "VALUE", "SAS_SIGNATURE"
-        # Otherwise only the storage account name is shared; the signing key is unconfirmed.
-        accounts = {(exposure.metadata.get("azure_sas") or {}).get("account") for exposure in exposures} - {None, ""}
-        _, marker, rest = row["object_id"].lower().partition("/storageaccounts/")
-        if marker and len(accounts) == 1 and rest.split("/", 1)[0] in accounts:
-            return "IDENTIFIER", "STORAGE_ACCOUNT_NAME"
-        return "CANDIDATE", "NONE"
-    if credential.credential_type == "GCP_SERVICE_ACCOUNT":
-        identifiers = {identifier for exposure in exposures
-                       for identifier in (exposure.metadata.get("issuer_comparison") or {}).get("gcp_service_account_keys", [])}
-        if len(identifiers) == 1 and row["object_id"] in identifiers:
-            return "IDENTIFIER", "SERVICE_ACCOUNT_KEY_ID"
     match = (row.get("summary") or {}).get("value_match") or {}
     if match.get("credential_type") != credential.credential_type or not _DIGEST.fullmatch(str(match.get("fingerprint", ""))):
         return "CANDIDATE", "NONE"
@@ -217,37 +138,6 @@ def _link(row, credential, exposures):
     return "CANDIDATE", "NONE"
 
 
-def sas_candidates(repo, accounts, *, status=None):
-    """Discovered SAS naming an approved storage account, for the ARM collector's offline
-    signer check. Only credential fingerprints and signed fields are handed over."""
-    names = {account.rsplit("/", 1)[-1].lower() for account in accounts}
-    # Unchecked SAS keep their account-name candidate links, never negative results.
-    # Bound both findings and exposures before their models are materialized; the
-    # worker propagates the incomplete candidate set into its operation report.
-    hits, total = repo.search_findings("azure_sas_token", MAX_SAS_CANDIDATES)
-    ids = [uuid.UUID(str(hit["id"])) for hit in hits if hit.get("label") == "AZURE_SAS_TOKEN"]
-    output = []
-    # One batched read for every candidate instead of three reads per finding (second review 2026-09-26).
-    batch = repo.findings_with_exposures(ids, exposure_limit=MAX_SAS_EXPOSURES + 1)
-    count = sum(len(exposures) for _, _, exposures in batch)
-    if status is not None:
-        status["complete"] = total <= len(hits) and count <= MAX_SAS_EXPOSURES
-    remaining = MAX_SAS_EXPOSURES
-    for finding, credential, exposures in batch:
-        exposures = exposures[:remaining]
-        remaining -= len(exposures)
-        if credential is None or finding.workflow_status == "FALSE_POSITIVE":
-            continue
-        seen = []
-        for exposure in exposures:
-            facts = (exposure.metadata or {}).get("azure_sas") or {}
-            if exposure.status in ("REMOVED", "FALSE_POSITIVE") or facts.get("account") not in names or facts in seen:
-                continue
-            seen.append(facts)
-            output.append({"fingerprint": credential.fingerprint, "sas": facts})
-    return output
-
-
 def finding_links(store, repo, finding_id, *, offset=0, limit=50, now=None, include_removed=False):
     now = now or datetime.now(UTC)
     finding = repo.get_finding(finding_id)
@@ -261,9 +151,7 @@ def finding_links(store, repo, finding_id, *, offset=0, limit=50, now=None, incl
     if finding.workflow_status == "FALSE_POSITIVE":
         exposures = []
     provider = INVENTORY_PROVIDERS.get(credential.provider or "", "")
-    if credential.credential_type in ("AZURE_STORAGE_KEY", "AZURE_SAS_TOKEN"):
-        provider = "azure_resource_manager"
-    kind = CANDIDATE_KIND.get(credential.credential_type, "credential")
+    kind = "credential"
     result = {"schema_version": 2, "finding_id": str(finding_id),
               "credential_type": credential.credential_type, "provider": provider,
               "object_kind": kind, "origins": [], "evidence": "NONE", "items": [],

@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from cremore.coverage.models import V1_PURPOSE, digest, weakest_completeness
-from cremore.coverage.store import VAULT_MANAGEMENT_REASONS, CoverageStore, utc
+from cremore.coverage.store import CoverageStore, utc
 
 REPORT_LIMIT = 100000
 _INVENTORY_LINK_LIMIT = 100
@@ -27,12 +27,7 @@ def public_connection(row, *, include_references=False):
 
 
 def is_vault_spec(spec):
-    if spec.get("schema_version", 1) == 1:
-        return (V1_PURPOSE.get(spec["provider"]) == "vault_metadata"
-                and (spec["provider"] not in {"vault", "openbao"} or bool(spec.get("mounts"))))
-    return (spec.get("schema_version") == 2 and spec.get("provider") in {"gcp", "azure_key_vault", "gitlab"}
-            and {"vault_metadata", "vault_value"}.issubset(spec.get("capabilities", []))
-            and spec.get("options", {}).get("include_values") is True)
+    return spec.get("schema_version", 1) == 1 and spec.get("provider") in {"aws_secrets_manager", "aws_ssm"}
 
 
 def in_vault_scope(row):
@@ -76,8 +71,7 @@ def _attach_key_creators(inventory, creations, states):
 
 
 def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
-           state="", source_type="", vault_provider="", origin="", fingerprint_key_id=None, settings=None,
-           management_references=True):
+           state="", source_type="", vault_provider="", origin="", fingerprint_key_id=None, settings=None):
     now = now or datetime.now(UTC)
     store = CoverageStore(repo)
     all_connections = store.list_connections()
@@ -95,7 +89,7 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
         blockers.add("VAULT_SCOPE_NOT_CONFIRMED")
     if not any(in_vault_scope(row) for row in all_connections):
         blockers.add("NO_VAULT_CONNECTED")
-    current, historical, issued, roots, states, inventory, managed, creations = [], [], [], [], [], [], [], []
+    current, historical, issued, roots, states, inventory, creations = [], [], [], [], [], [], []
     # How each in-scope store's newest run knows it listed everything.
     bases = []
     remaining = REPORT_LIMIT
@@ -110,8 +104,6 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
         reasons = set()
         if spec["provider"] == "aws_secrets_manager" and spec["version_selector"] not in ("latest", "AWSCURRENT"):
             reasons.add("HISTORICAL_VERSION_SCOPE")
-        if spec["provider"] in {"gcp_secret_manager", "vault", "openbao"} and spec["version_selector"] != "latest":
-            reasons.add("CURRENT_VERSION_NOT_CONFIRMED")
         if not connection["enabled"]:
             reasons.add("CONNECTION_DISABLED")
         if not latest:
@@ -131,10 +123,10 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
         access_reasons = [refusal] if refusal else []
         if in_vault_scope(connection):
             # Token-accessor and lease listing is management, never KV storage or its absence.
-            blockers.update(reasons - VAULT_MANAGEMENT_REASONS)
+            blockers.update(reasons)
             # A run finished before completeness was recorded listed through the API.
             bases.append(None if not latest else latest.get("completeness") or (
-                "API_LISTING" if latest["status"] == "COMPLETE" and spec["provider"] != "external_vault" else None))
+                "API_LISTING" if latest["status"] == "COMPLETE" else None))
         states.append({**public_connection(connection), "latest": None if not latest else {
             **{key: latest[key] for key in ("id", "status", "started_at", "finished_at", "item_count", "revision")},
             "completeness": latest.get("completeness")},
@@ -174,84 +166,7 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
                         (roots if item["evidence"] == "ROOT_STATUS" else issued).append(item)
                 elif item["evidence"] in ("VALUE", "IDENTIFIER"):
                     (current if item["current_evidence"] else historical).append(item)
-                elif item["evidence"] == "MANAGED" and index == 0:
-                    item["current_evidence"] = valid and (item.get("vault_managed") or {}).get("lookup_status") == "COMPLETE"
-                    managed.append(item)
     _attach_key_creators(inventory, creations, states)
-    # Schema 2 metadata alone says nothing about Vault values. Only explicitly
-    # approved value observations under the same HMAC key/engine/policy enter
-    # this existing comparison. Preserve every value from an item/version.
-    for connection in all_connections:
-        if connection["spec"].get("schema_version") != 2 or not is_vault_spec(connection["spec"]):
-            continue
-        spec = connection["spec"]
-        snapshots = store.snapshots(connection["id"], max_items=remaining)
-        remaining -= sum(len(s["items"]) for s in snapshots)
-        latest = snapshots[0] if snapshots else None
-        reasons = set()
-        if not connection["enabled"]:
-            reasons.add("CONNECTION_DISABLED")
-        if not latest:
-            reasons.add("NEVER_COLLECTED")
-        elif (latest["status"] != "COMPLETE" or latest["revision"] != connection["revision"]
-              or not latest["finished_at"] or utc(latest["started_at"]) + timedelta(hours=spec["freshness_hours"]) < now):
-            reasons.add("VAULT_VALUE_COLLECTION_NOT_CURRENT")
-        if any(s["truncated"] for s in snapshots):
-            reasons.add("REPORT_LIMIT_REACHED")
-        complete_value_scopes = set()
-        current_resources, other_version_resources = set(), set()
-        for index, snapshot in enumerate(snapshots):
-            for observation in snapshot["items"]:
-                if (index == 0 and observation.get("record_type") == "operation_report"
-                        and observation.get("purpose") == "vault_metadata" and observation.get("status") == "COMPLETE"
-                        and observation.get("value_access") == "COMPLETE"):
-                    value_contract = observation.get("value_contract") or {}
-                    if (fingerprint_key_id is not None and value_contract.get("key_id") == fingerprint_key_id
-                            and value_contract.get("material_kind") == "credential"
-                            and all(value_contract.get(k) == contract[k] for k in ("scheme", "engine_digest", "policy_digest"))):
-                        complete_value_scopes.add(digest(observation["scope"]))
-                match = observation.get("value_match")
-                if (observation.get("record_type") != "entity_observation" or observation.get("purpose") != "vault_metadata"
-                        or not match):
-                    continue
-                compatible = (fingerprint_key_id is not None and match["key_id"] == fingerprint_key_id
-                              and match["material_kind"] == "credential"
-                              and all(match[k] == contract[k] for k in ("scheme", "engine_digest", "policy_digest")))
-                if not compatible:
-                    reasons.add("VALUE_FINGERPRINT_CONTRACT_MISMATCH")
-                    continue
-                if match["evidence"] == "UNRESOLVED":
-                    reasons.add("UNRESOLVED_ITEMS")
-                    continue
-                if index == 0:
-                    # A historical version cannot prove current absence. The
-                    # same object's current read can, including when the
-                    # collector also reads its historical versions.
-                    reference = match["reference"]
-                    if match["version"]:
-                        reference = reference.removesuffix("/" + match["version"])
-                    resource = (digest(observation["scope"]), reference)
-                    (current_resources if match["version_state"] == "CURRENT"
-                     else other_version_resources).add(resource)
-                valid = (index == 0 and connection["enabled"] and snapshot["revision"] == connection["revision"]
-                         and snapshot["status"] in ("COMPLETE", "PARTIAL") and snapshot["finished_at"] is not None
-                         and utc(snapshot["started_at"]) + timedelta(hours=spec["freshness_hours"]) >= now
-                         and datetime.fromisoformat(match["read_at"]) + timedelta(hours=spec["freshness_hours"]) >= now)
-                item = {**match, "connection_id": str(connection["id"]), "connection_name": spec["name"],
-                        "provider": "gcp_secret_manager" if spec["provider"] == "gcp" else spec["provider"],
-                        "run_id": str(snapshot["id"]), "observed_at": match["read_at"],
-                        "current_evidence": valid and match["version_state"] == "CURRENT"}
-                (current if item["current_evidence"] else historical).append(item)
-        if other_version_resources - current_resources:
-            reasons.add("CURRENT_VERSION_NOT_CONFIRMED")
-        if not {digest(scope) for scope in spec["scopes"]}.issubset(complete_value_scopes):
-            reasons.add("VAULT_VALUE_SCOPE_NOT_COMPLETE")
-        if connection["enabled"]:
-            blockers.update(reasons)
-            bases.append("API_LISTING" if not reasons else None)
-        states.append({**public_connection(connection), "latest": None if not latest else {
-            **{key: latest[key] for key in ("id", "status", "started_at", "finished_at", "item_count", "revision")},
-            "completeness": latest.get("completeness")}, "reasons": sorted(reasons)})
     by_value, old_values, by_id = {}, {}, {}
     for item in current:
         if item["evidence"] == "VALUE":
@@ -264,15 +179,7 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
             by_id.setdefault((item["credential_type"], item["identifier"]), []).append(item)
 
     def location(item):
-        from cremore_gcp.linkage import is_service_account_key_identifier
-
-        from cremore.detection.safe_text import safe_fact_text
-
-        result = {key: value for key, value in item.items() if key not in ("fingerprint", "session_fingerprint", "provider_digest")}
-        identifier = result.get("issuer_identifier")
-        if identifier and (not is_service_account_key_identifier(identifier) or safe_fact_text(identifier) is None):
-            result.pop("issuer_identifier", None)
-        return result
+        return {key: value for key, value in item.items() if key not in ("fingerprint", "session_fingerprint", "provider_digest", "issuer_identifier")}
 
     inventory_by_id = {}
     for item in inventory:
@@ -280,9 +187,9 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
             inventory_by_id.setdefault(item["identifier"], []).append(item)
 
     rows, exposed_values, exposed_ids = [], set(), set()
-    exposed_digests, exposed_identifiers = set(), set()
+    exposed_digests = set()
     counts = {"exposed": 0, "matched": 0, "no_vault_match": 0, "unknown": 0, "issuance_only": 0, "vault_only": 0,
-              "managed": sum(item["current_evidence"] for item in managed)}
+              "managed": 0}
     findings, finding_total = ([{"id": finding_id}], 1) if finding_id else repo.search_findings("", REPORT_LIMIT)
     if finding_total > REPORT_LIMIT:
         blockers.add("REPORT_LIMIT_REACHED")
@@ -299,12 +206,8 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
             continue
         for exposure in exposures:
             private = exposure.metadata.get("issuer_comparison") or {}
-            if private.get("key_id") == fingerprint_key_id:
-                if private.get("github_token_digest"):
-                    exposed_digests.add(private["github_token_digest"])
-                identifiers = private.get("gcp_service_account_keys", [])
-                if len(identifiers) == 1:
-                    exposed_identifiers.add(identifiers[0])
+            if private.get("key_id") == fingerprint_key_id and private.get("github_token_digest"):
+                exposed_digests.add(private["github_token_digest"])
         key = (credential.credential_type, credential.fingerprint)
         exposed_values.add(key)
         identifier_type = "AWS_ACCESS_KEY" if credential.credential_type == "AWS_ACCESS_KEY_ID" else credential.credential_type
@@ -386,7 +289,7 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
     from cremore.coverage.issuer_coverage import issuance_rows
     metadata_rows, truncated = issuance_rows(repo, contract, current, historical, blockers,
         key_id=fingerprint_key_id, now=now, exposed_values=exposed_values, exposed_digests=exposed_digests,
-        exposed_identifiers=exposed_identifiers, limit=remaining)
+        limit=remaining)
     if truncated:
         blockers.add("REPORT_LIMIT_REACHED")
     counts["issuance_only"] += sum(not row["exposed"] and not row["issued"].get("snapshot_observation") for row in metadata_rows)
@@ -427,13 +330,6 @@ def report(repo, contract, *, offset=0, limit=100, now=None, finding_id=None,
         counts["vault_only"] += 1
         rows.append({"origin": "VAULT", "credential_type": key[0], "identifier": "", "state": "OBSERVED_IN_VAULT",
                      "locations": [location(item) for item in items], "reasons": ["NO_EXPOSURE_OBSERVED"]})
-    for item in managed:
-        # Vault/OpenBao accessor and lease IDs stay inside the administrator boundary (vault/README.md).
-        where = location(item) if management_references else {k: v for k, v in location(item).items() if k != "reference"}
-        rows.append({"origin": "MANAGEMENT", "credential_type": item["credential_type"], "identifier": "",
-                     "state": "MANAGED" if item["current_evidence"] else "UNKNOWN", "issued": where,
-                     "locations": [], "reasons": sorted(set(["DYNAMIC_MANAGEMENT_NOT_KV_STORAGE", *item["collection_reasons"]]
-                         + ([item["reason"]] if item.get("reason") else [])))})
     # One verdict per issued credential. Observed STS sessions are not expected
     # in a vault, and a key seen by several observations counts once.
     verdicts = {}

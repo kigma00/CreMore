@@ -253,10 +253,6 @@ def create_app(
     register_coverage_routes(app, repo, orchestrator, require_auth, require_role, aws_sessions, settings, require_principal)
     from cremore.api.metadata_coverage import register_metadata_routes
     register_metadata_routes(app, repo, require_auth, require_role, require_principal, settings)
-    from cremore.api.gcp_coverage import register_gcp_routes
-    register_gcp_routes(app, repo, require_auth)
-    from cremore.api.gcp_oauth import register_gcp_oauth_routes
-    register_gcp_oauth_routes(app, repo, settings, require_role)
     from cremore.api.dashboard import register_dashboard_routes
 
     register_dashboard_routes(
