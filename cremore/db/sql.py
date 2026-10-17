@@ -20,7 +20,6 @@ from sqlalchemy import (
     bindparam,
     case,
     cast,
-    create_engine,
     delete,
     exists,
     func,
@@ -36,7 +35,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection as SAConnection
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.pool import StaticPool
 
 from cremore.db import audit_chain
 from cremore.db.migrations import (
@@ -126,6 +124,7 @@ from cremore.siem.events import (
     finding_updated,
     stamped,
 )
+from cremore.utils.database import Database
 
 INSTALLATION_KEY = "siem.installation"
 
@@ -140,18 +139,8 @@ def _now() -> _dt.datetime:
 
 
 def make_engine(url: str) -> Engine:
-    # An in-memory SQLite database is per-connection; share one connection across
-    # threads (StaticPool) so the same schema is visible to the API threadpool.
-    if url.startswith("sqlite") and ":memory:" in url:
-        return create_engine(
-            url, future=True, poolclass=StaticPool,
-            connect_args={"check_same_thread": False},
-        )
-    if url.startswith("sqlite"):
-        # A worker's control loop and its task runner are separate writers on one file: a write waits up to
-        # 30 s for the other's commit, where pysqlite's 5 s could fail a lease renewal under a long write.
-        return create_engine(url, future=True, pool_pre_ping=True, connect_args={"timeout": 30})
-    return create_engine(url, future=True, pool_pre_ping=True)
+    """기존 공개 import 경로를 유지하면서 공통 연결 생성기를 호출한다."""
+    return Database.make_engine(url)
 
 
 _SCHEMA_LOCK_KEY = 0x6372655f736368  # "cre_sch": one schema writer at a time

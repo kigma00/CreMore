@@ -468,13 +468,11 @@ def queue_aws_read(repo, settings, operation, actor, params):
     """Return a bounded worker request, with a poll URL bound to its requester."""
     from fastapi.responses import JSONResponse
 
-    from cremore.collectors.base import CollectorError
-    from cremore.coverage import aws_requests
+    from cremore.engine.aws_read_engine import AwsReadEngine, AwsReadError
+
     try:
-        job = aws_requests.enqueue(repo, settings, operation, actor, params)
-    except CollectorError as exc:
-        raise http_error(409, exc.code) from None
-    except (TypeError, ValueError):
-        raise http_error(422, "AWS_REQUEST_TARGET_INVALID") from None
+        job = AwsReadEngine.enqueue(repo, settings, operation, actor, params)
+    except AwsReadError as exc:
+        raise http_error(exc.status, exc.code) from None
     return JSONResponse({"status": job.status, "request_id": str(job.id),
                          "poll_url": f"/api/v1/aws/requests/{job.id}"}, status_code=202)

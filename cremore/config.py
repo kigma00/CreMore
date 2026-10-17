@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", extra="ignore", case_sensitive=False)
 
     # --- deployment ---------------------------------------------------------
+    profile: Literal["local", "alpha", "live"] = Field(default="local", alias="PROFILE")
     auth_mode: str = Field(default="local", alias="AUTH_MODE")  # local (test) | oidc
     # No built-in value: a default shared admin token would be public knowledge.
     api_token: str = Field(default="", alias="API_TOKEN")
@@ -747,6 +748,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings(component: str = "api") -> Settings:
-    settings = Settings()
+    # 로컬 실행에서만 파일 설정을 허용해 배포 환경의 값 출처를 명확히 한다.
+    profile = os.environ.get("PROFILE", "local").lower()
+    if profile not in ("local", "alpha", "live"):
+        raise ValueError("PROFILE must be 'local', 'alpha' or 'live'")
+    settings = Settings(PROFILE=profile, _env_file=".env" if profile == "local" else None)
     settings.validate_safety(component)
     return settings
